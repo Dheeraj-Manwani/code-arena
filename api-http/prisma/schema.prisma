@@ -1,0 +1,170 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum ContestStatus {
+  SCHEDULED
+  RUNNING
+  ENDED
+}
+
+enum QuestionType {
+  MCQ
+  DSA
+  WEB
+}
+
+enum SubmissionStatus {
+  ACCEPTED
+  WRONG
+  PARTIAL
+  PENDING
+}
+
+model User {
+  id            String  @id @default(cuid())
+  name          String
+  email         String  @unique
+  password      String?
+  emailVerified Boolean @default(false)
+  image         String?
+  role          Role    @default(USER)
+
+  contests            Contest[]            @relation("ContestCreator")
+  contestParticipants ContestParticipant[]
+  submissions         Submission[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user")
+}
+
+model Contest {
+  id          String        @id @default(cuid())
+  title       String
+  description String?
+  startTime   DateTime
+  endTime     DateTime
+  status      ContestStatus @default(SCHEDULED)
+
+  createdById String
+  createdBy   User   @relation("ContestCreator", fields: [createdById], references: [id])
+
+  questions    ContestQuestion[]
+  participants ContestParticipant[]
+  submissions  Submission[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ContestParticipant {
+  id        String @id @default(cuid())
+  contestId String
+  userId    String
+  score     Int    @default(0)
+
+  contest Contest @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  submissions Submission[]
+
+  @@unique([contestId, userId])
+  @@index([contestId, score])
+}
+
+model Question {
+  id          String       @id @default(cuid())
+  title       String
+  description String
+  type        QuestionType
+  score       Int
+
+  mcq MCQQuestion?
+  dsa DSAQuestion?
+  web WebQuestion?
+
+  contestQuestions ContestQuestion[]
+  submissions      Submission[]
+
+  createdAt DateTime @default(now())
+}
+
+model ContestQuestion {
+  id         String @id @default(cuid())
+  contestId  String
+  questionId String
+  order      Int
+
+  contest  Contest  @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([contestId, questionId])
+}
+
+model MCQQuestion {
+  id            String @id
+  options       Json
+  correctOption Int
+
+  question Question @relation(fields: [id], references: [id], onDelete: Cascade)
+}
+
+model DSAQuestion {
+  id           String @id
+  inputFormat  String
+  outputFormat String
+  constraints  String
+  sampleInput  String
+  sampleOutput String
+
+  question Question @relation(fields: [id], references: [id], onDelete: Cascade)
+}
+
+model WebQuestion {
+  id             String  @id
+  instructions   String
+  expectedOutput String?
+
+  question Question @relation(fields: [id], references: [id], onDelete: Cascade)
+}
+
+model Submission {
+  id          String           @id @default(cuid())
+  userId      String
+  contestId   String
+  questionId  String
+  status      SubmissionStatus
+  score       Int
+  submittedAt DateTime         @default(now())
+
+  user                 User                @relation(fields: [userId], references: [id])
+  contest              Contest             @relation(fields: [contestId], references: [id])
+  question             Question            @relation(fields: [questionId], references: [id])
+  contestParticipant   ContestParticipant? @relation(fields: [contestParticipantId], references: [id])
+  contestParticipantId String?
+
+  @@index([contestId, userId])
+}
+
+model EmailOtp {
+  id        String   @id @default(cuid())
+  email     String
+  otpHash   String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([email, used, expiresAt, createdAt])
+}
