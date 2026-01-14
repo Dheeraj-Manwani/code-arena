@@ -1,11 +1,8 @@
-import { SessionUser } from "../schema/user.schema";
+import { Request } from "express";
 
-declare global {
-  namespace Express {
-    interface Request {
-      user?: SessionUser;
-    }
-  }
+export interface AuthRequest extends Request {
+  userId?: number;
+  userRole?: "creator" | "contestee";
 }
 
 export {};

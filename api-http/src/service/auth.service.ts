@@ -1,106 +1,48 @@
-import jwt, { JwtPayload } from "jsonwebtoken";
-import { User } from "@prisma/client";
-import { generateOtp, hashOtp, sendEmail } from "../util/otp";
-import * as otpRepo from "../repositories/otp.repository";
+import bcrypt from "bcrypt";
 import * as userRepo from "../repositories/user.repository";
 import {
-  InvalidOtpError,
-  InvalidTokenError,
-  RefreshTokenNotFoundError,
-  TooManyOtpRequestsError,
-  UserNotFoundError,
+  InvalidCredentialsError,
+  EmailAlreadyExistsError,
 } from "../errors/auth.errors";
-import { LoginUserInput, VerifyUserInput } from "../schema/user.schema";
+import { SignUpSchemaType, LoginSchemaType } from "../schema/auth.schema";
+import { generateToken } from "../middleware/auth";
 
-const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET!;
-const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET!;
+export const signUp = async (input: SignUpSchemaType) => {
+  const { name, email, password, role } = input;
 
-if (!ACCESS_TOKEN_SECRET || !REFRESH_TOKEN_SECRET) {
-  throw new Error("JWT secrets not configured");
-}
+  const existingUser = await userRepo.getUserFromEmail(email);
 
-export const refreshAccessToken = async (refreshToken?: string) => {
-  let payload: JwtPayload;
-
-  if (!refreshToken) {
-    throw new RefreshTokenNotFoundError();
-  }
-  try {
-    payload = jwt.verify(refreshToken, REFRESH_TOKEN_SECRET) as JwtPayload;
-  } catch {
-    throw new InvalidTokenError();
+  if (existingUser) {
+    throw new EmailAlreadyExistsError();
   }
 
-  if (payload.type !== "refresh" || !payload.sub) {
-    throw new InvalidTokenError();
-  }
+  const hashedPassword = await bcrypt.hash(password, 10);
 
-  const user = await userRepo.getUserFromId(payload.sub);
-  if (!user) {
-    throw new UserNotFoundError();
-  }
+  const user = await userRepo.createUser({
+    name,
+    email,
+    password: hashedPassword,
+    role: role || "contestee",
+  });
 
-  const accessToken = signAccessToken(user);
-  return { user, accessToken };
+  return user;
 };
 
-export const verifyEmailOtp = async ({ email, otp }: VerifyUserInput) => {
-  const otpHash = hashOtp(otp);
+export const login = async (input: LoginSchemaType) => {
+  const { email, password } = input;
 
-  const user = await otpRepo.verifyOtp(email, otpHash);
-
-  if (!user) {
-    throw new InvalidOtpError();
-  }
-
-  const accessToken = signAccessToken(user);
-  const refreshToken = signRefreshToken(user);
-
-  return { user, accessToken, refreshToken };
-};
-
-export const requestEmailOtp = async (email: string) => {
-  const recentOtps = await otpRepo.countRecentOtps(email);
-  console.warn("recentOtps ", recentOtps);
-  if (recentOtps >= 5) {
-    throw new TooManyOtpRequestsError();
-  }
-  const otp = generateOtp();
-  const otpHash = hashOtp(otp);
-  await otpRepo.createOtp(email, otpHash);
-  await sendEmail(email, otp);
-};
-
-export const loginUser = async ({ email }: LoginUserInput) => {
   const user = await userRepo.getUserFromEmail(email);
 
-  if (!user || !user.emailVerified) {
-    throw new UserNotFoundError();
+  if (!user) {
+    throw new InvalidCredentialsError();
   }
 
-  await requestEmailOtp(email);
+  const isValidPassword = await bcrypt.compare(password, user.password);
+  if (!isValidPassword) {
+    throw new InvalidCredentialsError();
+  }
+
+  const token = generateToken(user.id);
+
+  return { token };
 };
-
-function signAccessToken(user: User) {
-  return jwt.sign(
-    {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      type: "access",
-    },
-    ACCESS_TOKEN_SECRET,
-    { expiresIn: "30m" }
-  );
-}
-
-function signRefreshToken(user: User) {
-  return jwt.sign(
-    {
-      sub: user.id,
-      type: "refresh",
-    },
-    REFRESH_TOKEN_SECRET,
-    { expiresIn: "7d" }
-  );
-}

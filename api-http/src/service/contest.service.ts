@@ -1,72 +1,107 @@
-import {
-  PaginationQuery,
-  UpdateContestInput,
-} from "./../schema/contest.schema";
 import * as contestRepo from "../repositories/contest.repository";
+import * as problemRepo from "../repositories/problem.repository";
+import { ContestNotFoundError, ForbiddenError } from "../errors/contest.errors";
 import {
-  CreateContestInput,
-  ContestWithCreator,
-  ContestResponse,
+  CreateContestSchemaType,
+  AddMcqSchemaType,
+  AddDsaSchemaType,
 } from "../schema/contest.schema";
-import { Prisma } from "@prisma/client";
-import {
-  ContestEndedAndCannotBeUpdatedError,
-  ContestNotFoundError,
-  ContestRunningAndCannotBeUpdatedError,
-} from "../errors/contest.errors";
-
-export const getContests = async (
-  query: PaginationQuery
-): Promise<ContestWithCreator[]> => {
-  const { take = 10, skip = 0 } = query;
-  return await contestRepo.getContests(take, skip);
-};
 
 export const createContest = async (
-  input: CreateContestInput,
-  createdById: string
-): Promise<ContestResponse> => {
-  return await contestRepo.createContest(input, createdById);
+  input: CreateContestSchemaType,
+  creatorId: number
+) => {
+  const { title, description, startTime, endTime } = input;
+
+  const contest = await contestRepo.createContest({
+    title,
+    description,
+    startTime: new Date(startTime),
+    endTime: new Date(endTime),
+    creatorId,
+  });
+
+  return contest;
 };
 
-export const getContestById = async (
-  id: string
-): Promise<ContestResponse | null> => {
-  return await contestRepo.getContestById(id);
+export const getContestById = async (contestId: number) => {
+  const contest = await contestRepo.getContestByIdWithProblems(contestId);
+
+  if (!contest) {
+    throw new ContestNotFoundError();
+  }
+
+  const response = {
+    id: contest.id,
+    title: contest.title,
+    description: contest.description,
+    startTime: contest.startTime.toISOString(),
+    endTime: contest.endTime.toISOString(),
+    creatorId: contest.creatorId,
+    mcqs: contest.mcqs,
+    dsaProblems: contest.dsaProblems,
+  };
+
+  return response;
 };
 
-export const updateContest = async (contestId: string, data: any) => {
+export const addMcqToContest = async (
+  contestId: number,
+  input: AddMcqSchemaType
+) => {
   const contest = await contestRepo.getContestById(contestId);
 
   if (!contest) {
     throw new ContestNotFoundError();
   }
 
-  if (contest.status === "ENDED") {
-    throw new ContestEndedAndCannotBeUpdatedError();
-  }
+  const { questionText, options, correctOptionIndex, points } = input;
 
-  const now = new Date();
+  const mcq = await problemRepo.createMcqQuestion({
+    questionText,
+    options,
+    correctOptionIndex,
+    points,
+    contestId,
+  });
 
-  const isRunning =
-    "RUNNING" === contest.status ||
-    (now >= contest.startTime && now <= contest.endTime);
-
-  if (isRunning) {
-    throw new ContestRunningAndCannotBeUpdatedError();
-  }
-
-  return contestRepo.updateContest(contestId, buildPatchData(data));
+  return mcq;
 };
 
-const buildPatchData = (
-  input: UpdateContestInput
-): Prisma.ContestUpdateInput => {
-  const data: Prisma.ContestUpdateInput = {};
-  if (input.title !== undefined) data.title = input.title;
-  if (input.description !== undefined) data.description = input.description;
-  if (input.status !== undefined) data.status = input.status;
-  if (input.startTime !== undefined) data.startTime = new Date(input.startTime);
-  if (input.endTime !== undefined) data.endTime = new Date(input.endTime);
-  return data;
+export const addDsaToContest = async (
+  contestId: number,
+  input: AddDsaSchemaType
+) => {
+  const contest = await contestRepo.getContestById(contestId);
+
+  if (!contest) {
+    throw new ContestNotFoundError();
+  }
+
+  const {
+    title,
+    description,
+    tags,
+    points,
+    timeLimit,
+    memoryLimit,
+    testCases,
+  } = input;
+
+  const dsaProblem = await problemRepo.createDsaProblem({
+    title,
+    description,
+    tags,
+    points,
+    timeLimit,
+    memoryLimit,
+    contestId,
+    testCases: testCases.map((tc) => ({
+      input: tc.input,
+      expectedOutput: tc.expectedOutput,
+      isHidden: tc.isHidden,
+    })),
+  });
+
+  return dsaProblem;
 };

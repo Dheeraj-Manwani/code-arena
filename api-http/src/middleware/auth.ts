@@ -1,51 +1,64 @@
-import { Request, Response, NextFunction } from "express";
-import jwt, { JwtPayload } from "jsonwebtoken";
-import { Role } from "@prisma/client";
+import { Response, NextFunction } from "express";
+import jwt from "jsonwebtoken";
+import { sendError } from "../util/response";
+import prisma from "../lib/db";
+import { AuthRequest } from "../types/express.d";
 
-const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
 
-if (!ACCESS_TOKEN_SECRET) {
-  throw new Error("ACCESS_TOKEN_SECRET is not defined");
-}
-
-export function authMiddleware(
-  req: Request,
+export async function authenticateToken(
+  req: AuthRequest,
   res: Response,
   next: NextFunction
 ) {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader?.startsWith("Bearer ")) {
-    return res
-      .status(401)
-      .json({ message: "Missing or invalid Authorization header" });
-  }
-
-  const token = authHeader.split(" ")[1];
-
   try {
-    const payload = jwt.verify(token, ACCESS_TOKEN_SECRET!) as JwtPayload;
+    const authHeader = req.headers.authorization;
+    const token = authHeader && authHeader.split(" ")[1];
 
-    if (!payload.sub || payload.type !== "access" || !payload.role) {
-      return res.status(401).json({ message: "Invalid access token payload" });
+    if (!token) {
+      return sendError(res, "UNAUTHORIZED", 401);
     }
 
-    req.user = {
-      id: payload.sub,
-      role: payload.role,
-      email: payload.email,
-    };
+    const decoded = jwt.verify(token, JWT_SECRET) as { userId: number };
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: { id: true, role: true },
+    });
 
+    if (!user) {
+      return sendError(res, "UNAUTHORIZED", 401);
+    }
+
+    req.userId = user.id;
+    req.userRole = user.role as "creator" | "contestee";
     next();
-  } catch (err) {
-    return res.status(401).json({ message: "Invalid or expired access token" });
+  } catch (error) {
+    return sendError(res, "UNAUTHORIZED", 401);
   }
 }
 
-export const requiredRole =
-  (role: Role) => (req: Request, res: Response, next: NextFunction) => {
-    if (req.user?.role !== role) {
-      return res.status(403).json({ message: "Forbidden" });
-    }
-    next();
-  };
+export function requireCreator(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  if (req.userRole !== "creator") {
+    return sendError(res, "FORBIDDEN", 403);
+  }
+  next();
+}
+
+export function requireContestee(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  if (req.userRole !== "contestee") {
+    return sendError(res, "FORBIDDEN", 403);
+  }
+  next();
+}
+
+export function generateToken(userId: number): string {
+  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: "7d" });
+}

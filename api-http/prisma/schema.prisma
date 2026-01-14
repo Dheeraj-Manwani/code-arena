@@ -8,163 +8,131 @@ datasource db {
 }
 
 enum Role {
-  USER
-  ADMIN
-}
-
-enum ContestStatus {
-  SCHEDULED
-  RUNNING
-  ENDED
-}
-
-enum QuestionType {
-  MCQ
-  DSA
-  WEB
+  creator
+  contestee
 }
 
 enum SubmissionStatus {
-  ACCEPTED
-  WRONG
-  PARTIAL
-  PENDING
+  accepted
+  wrong_answer
+  time_limit_exceeded
+  runtime_error
 }
 
 model User {
-  id            String  @id @default(cuid())
-  name          String
-  email         String  @unique
-  password      String?
-  emailVerified Boolean @default(false)
-  image         String?
-  role          Role    @default(USER)
-
-  contests            Contest[]            @relation("ContestCreator")
-  contestParticipants ContestParticipant[]
-  submissions         Submission[]
-
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(contestee)
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 
-  @@map("user")
+  contests       Contest[]       @relation("ContestCreator")
+  mcqSubmissions McqSubmission[]
+  dsaSubmissions DsaSubmission[]
+
+  @@map("users")
 }
 
 model Contest {
-  id          String        @id @default(cuid())
-  title       String
-  description String?
-  startTime   DateTime
-  endTime     DateTime
-  status      ContestStatus @default(SCHEDULED)
-
-  createdById String
-  createdBy   User   @relation("ContestCreator", fields: [createdById], references: [id])
-
-  questions    ContestQuestion[]
-  participants ContestParticipant[]
-  submissions  Submission[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model ContestParticipant {
-  id        String @id @default(cuid())
-  contestId String
-  userId    String
-  score     Int    @default(0)
-
-  contest Contest @relation(fields: [contestId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  submissions Submission[]
-
-  @@unique([contestId, userId])
-  @@index([contestId, score])
-}
-
-model Question {
-  id          String       @id @default(cuid())
+  id          Int      @id @default(autoincrement())
   title       String
   description String
-  type        QuestionType
-  score       Int
+  startTime   DateTime
+  endTime     DateTime
+  createdAt   DateTime @default(now())
 
-  mcq MCQQuestion?
-  dsa DSAQuestion?
-  web WebQuestion?
+  creatorId Int
+  creator   User @relation("ContestCreator", fields: [creatorId], references: [id])
 
-  contestQuestions ContestQuestion[]
-  submissions      Submission[]
+  mcqs        McqQuestion[]
+  dsaProblems DsaProblem[]
 
-  createdAt DateTime @default(now())
+  @@map("contests")
 }
 
-model ContestQuestion {
-  id         String @id @default(cuid())
-  contestId  String
-  questionId String
-  order      Int
+model McqQuestion {
+  id                 Int      @id @default(autoincrement())
+  questionText       String
+  options            Json
+  correctOptionIndex Int
+  points             Int      @default(1)
+  createdAt          DateTime @default(now())
 
-  contest  Contest  @relation(fields: [contestId], references: [id], onDelete: Cascade)
-  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  contestId Int
+  contest   Contest @relation(fields: [contestId], references: [id])
 
-  @@unique([contestId, questionId])
+  submissions McqSubmission[]
+
+  @@map("mcq_questions")
 }
 
-model MCQQuestion {
-  id            String @id
-  options       Json
-  correctOption Int
+model DsaProblem {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String
+  tags        Json
+  points      Int      @default(100)
+  timeLimit   Int      @default(2000)
+  memoryLimit Int      @default(256)
+  createdAt   DateTime @default(now())
 
-  question Question @relation(fields: [id], references: [id], onDelete: Cascade)
+  contestId Int
+  contest   Contest @relation(fields: [contestId], references: [id])
+
+  testCases   TestCase[]
+  submissions DsaSubmission[]
+
+  @@map("dsa_problems")
 }
 
-model DSAQuestion {
-  id           String @id
-  inputFormat  String
-  outputFormat String
-  constraints  String
-  sampleInput  String
-  sampleOutput String
+model TestCase {
+  id             Int      @id @default(autoincrement())
+  input          String
+  expectedOutput String
+  isHidden       Boolean  @default(false)
+  createdAt      DateTime @default(now())
 
-  question Question @relation(fields: [id], references: [id], onDelete: Cascade)
+  problemId Int
+  problem   DsaProblem @relation(fields: [problemId], references: [id])
+
+  @@map("test_cases")
 }
 
-model WebQuestion {
-  id             String  @id
-  instructions   String
-  expectedOutput String?
+model McqSubmission {
+  id                  Int      @id @default(autoincrement())
+  selectedOptionIndex Int
+  isCorrect           Boolean
+  pointsEarned        Int      @default(0)
+  submittedAt         DateTime @default(now())
 
-  question Question @relation(fields: [id], references: [id], onDelete: Cascade)
+  userId     Int
+  questionId Int
+
+  user     User        @relation(fields: [userId], references: [id])
+  question McqQuestion @relation(fields: [questionId], references: [id])
+
+  @@unique([userId, questionId])
+  @@map("mcq_submissions")
 }
 
-model Submission {
-  id          String           @id @default(cuid())
-  userId      String
-  contestId   String
-  questionId  String
-  status      SubmissionStatus
-  score       Int
-  submittedAt DateTime         @default(now())
+model DsaSubmission {
+  id              Int              @id @default(autoincrement())
+  code            String
+  language        String
+  status          SubmissionStatus
+  pointsEarned    Int              @default(0)
+  testCasesPassed Int              @default(0)
+  totalTestCases  Int              @default(0)
+  executionTime   Int?
+  submittedAt     DateTime         @default(now())
 
-  user                 User                @relation(fields: [userId], references: [id])
-  contest              Contest             @relation(fields: [contestId], references: [id])
-  question             Question            @relation(fields: [questionId], references: [id])
-  contestParticipant   ContestParticipant? @relation(fields: [contestParticipantId], references: [id])
-  contestParticipantId String?
+  userId    Int
+  problemId Int
 
-  @@index([contestId, userId])
-}
+  user    User       @relation(fields: [userId], references: [id])
+  problem DsaProblem @relation(fields: [problemId], references: [id])
 
-model EmailOtp {
-  id        String   @id @default(cuid())
-  email     String
-  otpHash   String
-  expiresAt DateTime
-  used      Boolean  @default(false)
-  createdAt DateTime @default(now())
-
-  @@index([email, used, expiresAt, createdAt])
+  @@index([problemId, userId])
+  @@map("dsa_submissions")
 }

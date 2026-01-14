@@ -1,31 +1,19 @@
 import { AppError } from "./app-error";
 
-export class InvalidOtpError extends AppError {
+export class InvalidCredentialsError extends AppError {
   constructor() {
-    super("Invalid or expired OTP", 401);
+    super("Invalid credentials", 401, "INVALID_CREDENTIALS");
   }
 }
 
-export class InvalidTokenError extends AppError {
+export class EmailAlreadyExistsError extends AppError {
   constructor() {
-    super("Invalid token", 401);
+    super("Email already exists", 400, "EMAIL_ALREADY_EXISTS");
   }
 }
 
-export class TooManyOtpRequestsError extends AppError {
+export class UnauthorizedError extends AppError {
   constructor() {
-    super("Too many OTP requests. Try again later.", 429);
-  }
-}
-
-export class UserNotFoundError extends AppError {
-  constructor() {
-    super("User not found", 404);
-  }
-}
-
-export class RefreshTokenNotFoundError extends AppError {
-  constructor() {
-    super("Refresh token not found", 401);
+    super("Unauthorized", 401, "UNAUTHORIZED");
   }
 }

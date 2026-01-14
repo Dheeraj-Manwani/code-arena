@@ -1,0 +1,29 @@
+import { Response } from "express";
+import { AuthRequest } from "../types/express.d";
+import * as submissionService from "../service/submission.service";
+import { sendSuccess } from "../util/response";
+import { SubmitMcqSchema, SubmitDsaSchema } from "../schema/submission.schema";
+
+export const submitMcq = async (req: AuthRequest, res: Response) => {
+  const contestId = parseInt(String(req.params.contestId));
+  const questionId = parseInt(String(req.params.questionId));
+  const data = SubmitMcqSchema.parse(req.body);
+  const result = await submissionService.submitMcq(
+    contestId,
+    questionId,
+    req.userId!,
+    data
+  );
+  return sendSuccess(res, result, 201);
+};
+
+export const submitDsa = async (req: AuthRequest, res: Response) => {
+  const problemId = parseInt(String(req.params.problemId));
+  const data = SubmitDsaSchema.parse(req.body);
+  const result = await submissionService.submitDsa(
+    problemId,
+    req.userId!,
+    data
+  );
+  return sendSuccess(res, result, 201);
+};

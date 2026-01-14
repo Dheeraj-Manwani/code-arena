@@ -1,6 +1,7 @@
 import { ZodError } from "zod";
 import { Request, Response, NextFunction } from "express";
 import { AppError } from "../errors/app-error";
+import { sendError } from "../util/response";
 
 export function errorHandler(
   err: Error,
@@ -9,24 +10,21 @@ export function errorHandler(
   _next: NextFunction
 ) {
   if (err instanceof ZodError) {
-    return res.status(400).json({
-      message: "Validation failed",
-      errors: err.issues.map((issue) => ({
-        path: issue.path.join("."),
-        message: issue.message,
-      })),
-    });
+    return sendError(res, "INVALID_REQUEST", 400);
+  }
+
+  if ((err as any).code === "P2002") {
+    return sendError(res, "ALREADY_SUBMITTED", 400);
   }
 
   if (err instanceof AppError) {
-    return res.status(err.statusCode).json({
-      message: err.message,
-    });
+    return sendError(
+      res,
+      err.code || err.message.toUpperCase().replace(/\s+/g, "_"),
+      err.statusCode
+    );
   }
 
   console.error("Unhandled error:", err);
-
-  return res.status(500).json({
-    message: "Internal server error",
-  });
+  return sendError(res, "INTERNAL_SERVER_ERROR", 500);
 }
