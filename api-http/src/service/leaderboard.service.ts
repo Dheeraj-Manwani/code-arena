@@ -4,9 +4,9 @@ import * as userRepo from "../repositories/user.repository";
 import { ContestNotFoundError } from "../errors/contest.errors";
 
 export const getLeaderboard = async (contestId: number) => {
-  const contest = await contestRepo.getContestById(contestId);
+  const contestExists = await contestRepo.checkIfContestExists(contestId);
 
-  if (!contest) {
+  if (!contestExists) {
     throw new ContestNotFoundError();
   }
 

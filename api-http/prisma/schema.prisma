@@ -19,50 +19,122 @@ enum SubmissionStatus {
   runtime_error
 }
 
-model User {
-  id        Int      @id @default(autoincrement())
-  name      String
-  email     String   @unique
-  password  String
-  role      Role     @default(contestee)
-  createdAt DateTime @default(now())
+enum ContestType {
+  practice
+  competitive
+}
 
-  contests       Contest[]       @relation("ContestCreator")
+enum Difficulty {
+  easy
+  medium
+  hard
+}
+
+enum ContestStatus {
+  draft
+  scheduled
+  running
+  ended
+  cancelled
+}
+
+enum AttemptStatus {
+  in_progress
+  submitted
+  timed_out
+  abandoned
+}
+
+model User {
+  id         Int     @id @default(autoincrement())
+  name       String
+  email      String  @unique
+  password   String
+  isVerified Boolean @default(false)
+  imageUrl   String?
+  role       Role    @default(contestee)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contests       Contest[]            @relation("ContestCreator")
+  mcqQuestions   McqQuestion[]
+  dsaProblems    DsaProblem[]
+  attempts       ContestAttempt[]
   mcqSubmissions McqSubmission[]
   dsaSubmissions DsaSubmission[]
+  leaderboard    ContestLeaderboard[]
 
+  @@index([role])
   @@map("users")
 }
 
 model Contest {
-  id          Int      @id @default(autoincrement())
-  title       String
-  description String
-  startTime   DateTime
-  endTime     DateTime
-  createdAt   DateTime @default(now())
+  id            Int       @id @default(autoincrement())
+  title         String
+  description   String
+  startTime     DateTime?
+  endTime       DateTime?
+  maxDurationMs Int?
+
+  type   ContestType   @default(competitive)
+  status ContestStatus @default(draft)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   creatorId Int
   creator   User @relation("ContestCreator", fields: [creatorId], references: [id])
 
-  mcqs        McqQuestion[]
-  dsaProblems DsaProblem[]
+  questions      ContestQuestion[]
+  leaderboard    ContestLeaderboard[]
+  attempts       ContestAttempt[]
+  mcqSubmissions McqSubmission[]
+  dsaSubmissions DsaSubmission[]
 
+  @@index([creatorId])
+  @@index([startTime, endTime])
   @@map("contests")
 }
 
+model ContestAttempt {
+  id Int @id @default(autoincrement())
+
+  userId    Int
+  contestId Int
+
+  startedAt   DateTime      @default(now())
+  submittedAt DateTime?
+  durationMs  Int?
+  totalPoints Int           @default(0)
+  status      AttemptStatus @default(in_progress)
+
+  user    User    @relation(fields: [userId], references: [id])
+  contest Contest @relation(fields: [contestId], references: [id])
+
+  mcqSubmissions McqSubmission[]
+  dsaSubmissions DsaSubmission[]
+
+  @@index([userId])
+  @@index([contestId])
+}
+
 model McqQuestion {
-  id                 Int      @id @default(autoincrement())
+  id                 Int    @id @default(autoincrement())
   questionText       String
   options            Json
   correctOptionIndex Int
-  points             Int      @default(1)
-  createdAt          DateTime @default(now())
+  points             Int    @default(1)
+  maxDurationMs      Int?
 
-  contestId Int
-  contest   Contest @relation(fields: [contestId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  submissions McqSubmission[]
+  creatorId Int
+  createdBy User @relation(fields: [creatorId], references: [id])
+
+  contestLinks ContestQuestion[]
+  submissions  McqSubmission[]
 
   @@map("mcq_questions")
 }
@@ -71,19 +143,40 @@ model DsaProblem {
   id          Int      @id @default(autoincrement())
   title       String
   description String
-  tags        Json
-  points      Int      @default(100)
-  timeLimit   Int      @default(2000)
-  memoryLimit Int      @default(256)
-  createdAt   DateTime @default(now())
+  tags        String[] @default([])
 
-  contestId Int
-  contest   Contest @relation(fields: [contestId], references: [id])
+  points        Int         @default(100)
+  timeLimit     Int         @default(2000)
+  memoryLimit   Int         @default(256)
+  difficulty    Difficulty?
+  maxDurationMs Int?
 
-  testCases   TestCase[]
-  submissions DsaSubmission[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  creatorId Int
+  createdBy User @relation(fields: [creatorId], references: [id])
+
+  testCases    TestCase[]
+  submissions  DsaSubmission[]
+  contestLinks ContestQuestion[]
 
   @@map("dsa_problems")
+}
+
+model ContestQuestion {
+  id        Int @id @default(autoincrement())
+  contestId Int
+  order     Int
+
+  mcqId Int?
+  dsaId Int?
+
+  contest Contest      @relation(fields: [contestId], references: [id])
+  mcq     McqQuestion? @relation(fields: [mcqId], references: [id])
+  dsa     DsaProblem?  @relation(fields: [dsaId], references: [id])
+
+  @@index([contestId])
 }
 
 model TestCase {
@@ -96,6 +189,7 @@ model TestCase {
   problemId Int
   problem   DsaProblem @relation(fields: [problemId], references: [id])
 
+  @@index([problemId])
   @@map("test_cases")
 }
 
@@ -108,11 +202,17 @@ model McqSubmission {
 
   userId     Int
   questionId Int
+  contestId  Int
+  attemptId  Int
 
-  user     User        @relation(fields: [userId], references: [id])
-  question McqQuestion @relation(fields: [questionId], references: [id])
+  user     User           @relation(fields: [userId], references: [id])
+  question McqQuestion    @relation(fields: [questionId], references: [id])
+  contest  Contest        @relation(fields: [contestId], references: [id])
+  attempt  ContestAttempt @relation(fields: [attemptId], references: [id])
 
-  @@unique([userId, questionId])
+  @@index([questionId])
+  @@index([contestId])
+  @@index([attemptId])
   @@map("mcq_submissions")
 }
 
@@ -129,10 +229,41 @@ model DsaSubmission {
 
   userId    Int
   problemId Int
+  contestId Int
+  attemptId Int
 
-  user    User       @relation(fields: [userId], references: [id])
-  problem DsaProblem @relation(fields: [problemId], references: [id])
+  user    User           @relation(fields: [userId], references: [id])
+  problem DsaProblem     @relation(fields: [problemId], references: [id])
+  contest Contest        @relation(fields: [contestId], references: [id])
+  attempt ContestAttempt @relation(fields: [attemptId], references: [id])
 
-  @@index([problemId, userId])
+  @@index([problemId])
+  @@index([contestId])
+  @@index([attemptId])
   @@map("dsa_submissions")
+}
+
+model ContestLeaderboard {
+  id          Int @id @default(autoincrement())
+  contestId   Int
+  userId      Int
+  totalPoints Int
+  rank        Int
+
+  contest Contest @relation(fields: [contestId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@unique([contestId, userId])
+}
+
+model EmailOtp {
+  id        String   @id @default(cuid())
+  email     String
+  otpHash   String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([email, used])
+  @@index([expiresAt])
 }

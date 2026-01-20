@@ -1,13 +1,12 @@
-import { Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
+import { Response, NextFunction, Request } from "express";
+import jwt, { JwtPayload } from "jsonwebtoken";
 import { sendError } from "../util/response";
 import prisma from "../lib/db";
-import { AuthRequest } from "../types/express.d";
 
-const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
+const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET || "";
 
 export async function authenticateToken(
-  req: AuthRequest,
+  req: Request,
   res: Response,
   next: NextFunction
 ) {
@@ -15,13 +14,20 @@ export async function authenticateToken(
     const authHeader = req.headers.authorization;
     const token = authHeader && authHeader.split(" ")[1];
 
-    if (!token) {
+    if (!token || !ACCESS_TOKEN_SECRET) {
       return sendError(res, "UNAUTHORIZED", 401);
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId: number };
+    const decoded = jwt.verify(token, ACCESS_TOKEN_SECRET) as JwtPayload;
+    if (decoded.type !== "access" || !decoded.sub) {
+      return sendError(res, "UNAUTHORIZED", 401);
+    }
+
+    const userId =
+      typeof decoded.sub === "string" ? parseInt(decoded.sub, 10) : decoded.sub;
+
     const user = await prisma.user.findUnique({
-      where: { id: decoded.userId },
+      where: { id: userId },
       select: { id: true, role: true },
     });
 
@@ -30,7 +36,7 @@ export async function authenticateToken(
     }
 
     req.userId = user.id;
-    req.userRole = user.role as "creator" | "contestee";
+    req.userRole = user.role;
     next();
   } catch (error) {
     return sendError(res, "UNAUTHORIZED", 401);
@@ -38,7 +44,7 @@ export async function authenticateToken(
 }
 
 export function requireCreator(
-  req: AuthRequest,
+  req: Request,
   res: Response,
   next: NextFunction
 ) {
@@ -49,7 +55,7 @@ export function requireCreator(
 }
 
 export function requireContestee(
-  req: AuthRequest,
+  req: Request,
   res: Response,
   next: NextFunction
 ) {
@@ -57,8 +63,4 @@ export function requireContestee(
     return sendError(res, "FORBIDDEN", 403);
   }
   next();
-}
-
-export function generateToken(userId: number): string {
-  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: "7d" });
 }

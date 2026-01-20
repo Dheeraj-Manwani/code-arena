@@ -1,12 +1,16 @@
 import prisma from "../lib/db";
+import { SubmissionStatus } from "@prisma/client";
 
-export const getMcqSubmission = async (userId: number, questionId: number) => {
-  return await prisma.mcqSubmission.findUnique({
+export const getMcqSubmission = async (
+  userId: number,
+  questionId: number,
+  contestId: number
+) => {
+  return await prisma.mcqSubmission.findFirst({
     where: {
-      userId_questionId: {
-        userId,
-        questionId,
-      },
+      userId,
+      questionId,
+      contestId,
     },
   });
 };
@@ -14,6 +18,8 @@ export const getMcqSubmission = async (userId: number, questionId: number) => {
 export const createMcqSubmission = async (data: {
   userId: number;
   questionId: number;
+  contestId: number;
+  attemptId: number;
   selectedOptionIndex: number;
   isCorrect: boolean;
   pointsEarned: number;
@@ -22,6 +28,8 @@ export const createMcqSubmission = async (data: {
     data: {
       userId: data.userId,
       questionId: data.questionId,
+      contestId: data.contestId,
+      attemptId: data.attemptId,
       selectedOptionIndex: data.selectedOptionIndex,
       isCorrect: data.isCorrect,
       pointsEarned: data.pointsEarned,
@@ -32,9 +40,11 @@ export const createMcqSubmission = async (data: {
 export const createDsaSubmission = async (data: {
   userId: number;
   problemId: number;
+  contestId: number;
+  attemptId: number;
   code: string;
   language: string;
-  status: string;
+  status: SubmissionStatus;
   pointsEarned: number;
   testCasesPassed: number;
   totalTestCases: number;
@@ -43,9 +53,11 @@ export const createDsaSubmission = async (data: {
     data: {
       userId: data.userId,
       problemId: data.problemId,
+      contestId: data.contestId,
+      attemptId: data.attemptId,
       code: data.code,
       language: data.language,
-      status: data.status as any,
+      status: data.status,
       pointsEarned: data.pointsEarned,
       testCasesPassed: data.testCasesPassed,
       totalTestCases: data.totalTestCases,
@@ -56,9 +68,7 @@ export const createDsaSubmission = async (data: {
 export const getMcqSubmissionsByContest = async (contestId: number) => {
   return await prisma.mcqSubmission.findMany({
     where: {
-      question: {
-        contestId: contestId,
-      },
+      contestId: contestId,
     },
     select: {
       userId: true,
@@ -70,9 +80,7 @@ export const getMcqSubmissionsByContest = async (contestId: number) => {
 export const getDsaSubmissionsByContest = async (contestId: number) => {
   return await prisma.dsaSubmission.findMany({
     where: {
-      problem: {
-        contestId: contestId,
-      },
+      contestId: contestId,
     },
     select: {
       userId: true,

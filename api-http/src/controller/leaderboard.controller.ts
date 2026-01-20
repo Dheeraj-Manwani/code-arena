@@ -1,10 +1,10 @@
-import { Response } from "express";
+import { Request, Response } from "express";
 import { AuthRequest } from "../types/express.d";
 import * as leaderboardService from "../service/leaderboard.service";
 import { sendSuccess } from "../util/response";
 import { ContestNotFoundError } from "../errors/contest.errors";
 
-export const getLeaderboard = async (req: AuthRequest, res: Response) => {
+export const getLeaderboard = async (req: Request, res: Response) => {
   const contestId = parseInt(String(req.params.contestId));
   if (isNaN(contestId)) {
     throw new ContestNotFoundError();
