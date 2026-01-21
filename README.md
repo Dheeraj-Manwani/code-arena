@@ -1,4 +1,4 @@
-# Contest Platform Assignment
+# Code Arena (Platform to host and attempt coding Contests) 
 
 A full-stack contest platform application with admin dashboard for creating and managing coding contests, MCQ questions, and DSA problems.
 
