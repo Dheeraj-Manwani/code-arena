@@ -117,7 +117,7 @@ export const signUp = async ({ email, name, password }: SignUpInput) => {
       email,
       name,
       password: passwordHash,
-      role: 'creator',
+      role: 'contestee',
       isVerified: false,
     });
   }

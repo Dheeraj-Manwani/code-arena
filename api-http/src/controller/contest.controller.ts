@@ -4,24 +4,21 @@ import { sendSuccess } from "../util/response";
 import {
   CreateContestSchema,
   UpdateContestSchema,
-  AddMcqSchema,
-  AddDsaSchema,
+  GetContestsSchema,
 } from "../schema/contest.schema";
 import { ContestNotFoundError } from "../errors/contest.errors";
+import { AddDsaSchema, AddMcqSchema } from "../schema/problem.schema";
 
 export const getAllContests = async (req: Request, res: Response) => {
-  const page = parseInt(String(req.query.page)) || 1;
-  const limit = parseInt(String(req.query.limit)) || 10;
-  const search = String(req.query.search || "").trim() || undefined;
-  const status = String(req.query.status || "").trim() || undefined;
-  const sortBy = String(req.query.sortBy || "").trim() || undefined;
+  const query = GetContestsSchema.parse(req.query);
   const contests = await contestService.getAllContests(
-    page,
-    limit,
+    query.page,
+    query.limit,
     req.userRole,
-    search,
-    status,
-    sortBy
+    query.search,
+    query.status,
+    query.type,
+    query.sortBy,
   );
   return sendSuccess(res, contests, 200);
 };
@@ -38,7 +35,11 @@ export const getContestById = async (req: Request, res: Response) => {
     throw new ContestNotFoundError();
   }
   const includeQuestions = req.query.includeQuestions === "true";
-  const contest = await contestService.getContestById(contestId, includeQuestions);
+  const contest = await contestService.getContestById(
+    contestId,
+    includeQuestions,
+    req.userRole,
+  );
   return sendSuccess(res, contest, 200);
 };
 
@@ -58,7 +59,11 @@ export const addDsa = async (req: Request, res: Response) => {
     throw new ContestNotFoundError();
   }
   const data = AddDsaSchema.parse(req.body);
-  const dsaProblem = await contestService.addDsaToContest(contestId, data, req.userId);
+  const dsaProblem = await contestService.addDsaToContest(
+    contestId,
+    data,
+    req.userId,
+  );
   return sendSuccess(res, dsaProblem, 201);
 };
 
@@ -68,11 +73,7 @@ export const updateContest = async (req: Request, res: Response) => {
     throw new ContestNotFoundError();
   }
   const data = UpdateContestSchema.parse(req.body);
-  const contest = await contestService.updateContest(
-    contestId,
-    data,
-
-  );
+  const contest = await contestService.updateContest(contestId, data);
   return sendSuccess(res, contest, 200);
 };
 
@@ -86,7 +87,11 @@ export const linkMcqToContest = async (req: Request, res: Response) => {
   if (isNaN(questionId)) {
     return res.status(400).json({ error: "Invalid question ID" });
   }
-  const link = await contestService.linkMcqToContest(contestId, questionId, order);
+  const link = await contestService.linkMcqToContest(
+    contestId,
+    questionId,
+    order,
+  );
   return sendSuccess(res, link, 200);
 };
 
@@ -100,7 +105,11 @@ export const linkDsaToContest = async (req: Request, res: Response) => {
   if (isNaN(problemId)) {
     return res.status(400).json({ error: "Invalid problem ID" });
   }
-  const link = await contestService.linkDsaToContest(contestId, problemId, order);
+  const link = await contestService.linkDsaToContest(
+    contestId,
+    problemId,
+    order,
+  );
   return sendSuccess(res, link, 200);
 };
 

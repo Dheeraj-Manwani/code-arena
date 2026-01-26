@@ -1,6 +1,11 @@
 import { useMutation } from "@tanstack/react-query";
 import { problemApi } from "@/api/problem";
-import type { AddMcqType, AddDsaType, UpdateMcqType, UpdateDsaType } from "@/schema/contest.schema";
+import type {
+  AddMcqType,
+  AddDsaType,
+  UpdateMcqType,
+  UpdateDsaType,
+} from "@/schema/problem.schema";
 import { queryClient } from "@/lib/queryClient";
 
 export const useCreateMcqQuestionMutation = () => {

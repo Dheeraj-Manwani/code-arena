@@ -5,8 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Plus, Trash2, GripVertical, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { AddMcqSchema } from "@/schema/contest.schema";
-import type { AddMcqType } from "@/schema/contest.schema";
+import { AddMcqSchema, type AddMcqType } from "@/schema/problem.schema";
 
 interface McqFormProps {
   initialData?: Partial<AddMcqType>;
@@ -32,8 +31,8 @@ export const McqForm = ({
     points: initialData?.points || 10,
     options: initialData?.options || ["", "", "", ""],
     correctOptionIndex: initialData?.correctOptionIndex || 0,
-    maxDurationMs: initialData?.maxDurationMs 
-      ? String(Math.round(initialData.maxDurationMs / 60000)) 
+    maxDurationMs: initialData?.maxDurationMs
+      ? String(Math.round(initialData.maxDurationMs / 60000))
       : "",
   });
   const [optionDragIndex, setOptionDragIndex] = useState<number | null>(null);
@@ -133,8 +132,8 @@ export const McqForm = ({
       points: formData.points,
       ...(formData.maxDurationMs &&
         formData.maxDurationMs.trim() !== "" && {
-          maxDurationMs: parseInt(formData.maxDurationMs) * 60000 || undefined,
-        }),
+        maxDurationMs: parseInt(formData.maxDurationMs) * 60000 || undefined,
+      }),
     };
 
     // Validate using zod schema
@@ -274,7 +273,7 @@ export const McqForm = ({
               className={cn(
                 "flex items-center gap-3 p-2 rounded-lg transition-all relative",
                 optionDragIndex === index &&
-                  "bg-primary/10 border border-primary/30"
+                "bg-primary/10 border border-primary/30"
               )}
             >
               <div className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded">

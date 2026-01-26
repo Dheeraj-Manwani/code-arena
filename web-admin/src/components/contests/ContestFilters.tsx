@@ -18,7 +18,7 @@ export type SortOption =
   | "status-asc"
   | "status-desc";
 
-export type FilterStatus = "all" | "draft" | "scheduled" | "running" | "ended" | "cancelled";
+export type FilterStatus = "all" | "draft" | "published" | "cancelled";
 
 interface ContestFiltersProps {
   isFiltersExpanded: boolean;
@@ -117,9 +117,7 @@ export const ContestFilters = ({
           <SelectContent>
             <SelectItem value="all">All Status</SelectItem>
             <SelectItem value="draft">Draft</SelectItem>
-            <SelectItem value="scheduled">Scheduled</SelectItem>
-            <SelectItem value="running">Running</SelectItem>
-            <SelectItem value="ended">Ended</SelectItem>
+            <SelectItem value="published">Published</SelectItem>
             <SelectItem value="cancelled">Cancelled</SelectItem>
           </SelectContent>
         </Select>

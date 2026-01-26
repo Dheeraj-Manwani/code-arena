@@ -6,10 +6,12 @@ import morgan from "morgan";
 import cookieParser from "cookie-parser";
 import authRoutes from "./routes/auth.routes";
 import contestRoutes from "./routes/contest.routes";
+import dashboardRoutes from "./routes/dashboard.routes";
 import submissionRoutes from "./routes/submission.routes";
 import problemRoutes from "./routes/problem.routes";
 import leaderboardRoutes from "./routes/leaderboard.routes";
 import statsRoutes from "./routes/stats.routes";
+import profileRoutes from "./routes/profile.routes";
 import { errorHandler } from "./middleware/error-handler";
 
 dotenv.config();
@@ -38,10 +40,12 @@ app
 
 app.use("/api/auth", authRoutes);
 app.use("/api/contests", contestRoutes);
+app.use("/api", dashboardRoutes);
 app.use("/api", submissionRoutes);
 app.use("/api/problems", problemRoutes);
 app.use("/api/contests", leaderboardRoutes);
 app.use("/api/stats", statsRoutes);
+app.use("/api", profileRoutes);
 
 app.use(errorHandler);
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

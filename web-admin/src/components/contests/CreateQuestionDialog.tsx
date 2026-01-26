@@ -16,7 +16,7 @@ import {
 import { Code, FileText } from "lucide-react";
 import { McqForm } from "@/components/questions/McqForm";
 import { DsaForm } from "@/components/questions/DsaForm";
-import type { AddMcqType, AddDsaType } from "@/schema/contest.schema";
+import type { AddMcqType, AddDsaType } from "@/schema/problem.schema";
 
 interface CreateQuestionDialogProps {
   isOpen: boolean;

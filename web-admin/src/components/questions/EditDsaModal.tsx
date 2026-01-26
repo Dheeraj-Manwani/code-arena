@@ -17,12 +17,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "react-hot-toast";
-import { Plus, Trash2, Clock, Database } from "lucide-react";
+import { Plus, Trash2, Clock, Database, FileCode } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { DsaProblem } from "@/schema/problem.schema";
 import { useUpdateDsaProblemMutation } from "@/queries/problem.mutations";
-import { UpdateDsaSchema } from "@/schema/contest.schema";
-import type { UpdateDsaType } from "@/schema/contest.schema";
+import { UpdateDsaSchema, type UpdateDsaType } from "@/schema/problem.schema";
 import { problemApi } from "@/api/problem";
 
 interface TestCase {
@@ -54,13 +54,18 @@ export const EditDsaModal = ({
     memoryLimit: 256,
     difficulty: "" as "easy" | "medium" | "hard" | "",
     maxDurationMs: "",
+    inputFormat: "",
+    outputFormat: "",
+    constraints: [""] as string[],
+    boilerplate: { cpp: "", python: "", java: "", javascript: "" } as Record<string, string>,
   });
   const [testCases, setTestCases] = useState<TestCase[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (problem && isOpen) {
-      setFormData({
+      setFormData((prev) => ({
+        ...prev,
         title: problem.title || "",
         description: problem.description || "",
         tags: problem.tags?.join(", ") || "",
@@ -71,34 +76,65 @@ export const EditDsaModal = ({
         maxDurationMs: problem.maxDurationMs
           ? String(Math.round(problem.maxDurationMs / 60000))
           : "",
-      });
+        inputFormat: (problem as { inputFormat?: string | null }).inputFormat ?? "",
+        outputFormat: (problem as { outputFormat?: string | null }).outputFormat ?? "",
+        constraints: Array.isArray((problem as { constraints?: string[] }).constraints) &&
+          (problem as { constraints?: string[] }).constraints!.length > 0
+          ? (problem as { constraints: string[] }).constraints
+          : [""],
+        boilerplate: {
+          cpp: (problem as { boilerplate?: Record<string, string> }).boilerplate?.cpp ?? "",
+          python: (problem as { boilerplate?: Record<string, string> }).boilerplate?.python ?? "",
+          java: (problem as { boilerplate?: Record<string, string> }).boilerplate?.java ?? "",
+          javascript: (problem as { boilerplate?: Record<string, string> }).boilerplate?.javascript ?? "",
+        },
+      }));
 
-      // Fetch full problem details including test cases
-      const fetchTestCases = async () => {
+      // Fetch full problem details including test cases and format fields
+      const fetchFull = async () => {
         try {
           const response = await problemApi.getDsaProblemById(problem.id);
-          const fullProblem = response.data;
-          // Check if testCases are included in the response
-          if (fullProblem && fullProblem.testCases && fullProblem.testCases.length > 0) {
-            const testCasesData = fullProblem.testCases.map(
-              (tc, index: number) => ({
-                id: tc.id?.toString() || index.toString(),
+          const fullProblem = response.data as {
+            testCases?: Array<{ id?: number; input?: string; expectedOutput?: string; isHidden?: boolean }>;
+            inputFormat?: string | null;
+            outputFormat?: string | null;
+            constraints?: string[];
+            boilerplate?: Record<string, string>;
+          };
+          if (fullProblem?.testCases && fullProblem.testCases.length > 0) {
+            setTestCases(
+              fullProblem.testCases.map((tc, i) => ({
+                id: tc.id?.toString() ?? String(i),
                 input: tc.input || "",
                 expectedOutput: tc.expectedOutput || "",
                 isHidden: tc.isHidden || false,
-              })
+              }))
             );
-            setTestCases(testCasesData);
           } else {
             setTestCases([]);
           }
+          setFormData((prev) => ({
+            ...prev,
+            inputFormat: fullProblem.inputFormat ?? "",
+            outputFormat: fullProblem.outputFormat ?? "",
+            constraints:
+              Array.isArray(fullProblem.constraints) && fullProblem.constraints.length > 0
+                ? fullProblem.constraints
+                : [""],
+            boilerplate: {
+              cpp: fullProblem.boilerplate?.cpp ?? "",
+              python: fullProblem.boilerplate?.python ?? "",
+              java: fullProblem.boilerplate?.java ?? "",
+              javascript: fullProblem.boilerplate?.javascript ?? "",
+            },
+          }));
         } catch (error) {
-          console.error("Failed to fetch test cases:", error);
+          console.error("Failed to fetch problem details:", error);
           setTestCases([]);
         }
       };
 
-      fetchTestCases();
+      fetchFull();
       setErrors({});
     }
   }, [problem, isOpen]);
@@ -136,6 +172,22 @@ export const EditDsaModal = ({
     }
   };
 
+  const addConstraint = () => {
+    setFormData((f) => ({ ...f, constraints: [...f.constraints, ""] }));
+  };
+  const removeConstraint = (index: number) => {
+    setFormData((f) => ({
+      ...f,
+      constraints: f.constraints.filter((_, i) => i !== index),
+    }));
+  };
+  const updateConstraint = (index: number, value: string) => {
+    setFormData((f) => ({
+      ...f,
+      constraints: f.constraints.map((c, i) => (i === index ? value : c)),
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!problem) return;
@@ -154,11 +206,17 @@ export const EditDsaModal = ({
       ...(formData.difficulty && { difficulty: formData.difficulty }),
       ...(formData.maxDurationMs &&
         formData.maxDurationMs.trim() !== "" && {
-          maxDurationMs: parseInt(formData.maxDurationMs) * 60000 || undefined,
-        }),
-      // Only include testCases if they have been modified (non-empty)
-      // If testCases array is empty, don't include it to keep existing test cases
-      // If testCases array has items, replace all test cases
+        maxDurationMs: parseInt(formData.maxDurationMs) * 60000 || undefined,
+      }),
+      inputFormat: formData.inputFormat.trim() || null,
+      outputFormat: formData.outputFormat.trim() || null,
+      constraints: formData.constraints.map((c) => c.trim()).filter(Boolean),
+      boilerplate: {
+        cpp: formData.boilerplate.cpp,
+        python: formData.boilerplate.python,
+        java: formData.boilerplate.java,
+        javascript: formData.boilerplate.javascript,
+      },
       ...(testCases.length > 0 && {
         testCases: testCases.map((tc) => ({
           input: tc.input.trim(),
@@ -309,6 +367,172 @@ export const EditDsaModal = ({
                 </p>
               )}
             </div>
+          </div>
+
+          {/* Input / Output Format */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <Label className="arena-label">Input Format</Label>
+              <Textarea
+                placeholder="e.g. First line: integer n. Second line: n space-separated integers."
+                value={formData.inputFormat}
+                onChange={(e) => {
+                  setFormData({ ...formData, inputFormat: e.target.value });
+                  if (errors.inputFormat) setErrors({ ...errors, inputFormat: "" });
+                }}
+                disabled={isUpdating}
+                className={cn(
+                  "arena-input w-full min-h-[100px] resize-y font-mono text-sm",
+                  errors.inputFormat && "border-destructive"
+                )}
+              />
+              {errors.inputFormat && (
+                <p className="text-sm text-destructive mt-1">{errors.inputFormat}</p>
+              )}
+            </div>
+            <div>
+              <Label className="arena-label">Output Format</Label>
+              <Textarea
+                placeholder="e.g. Print one integer — the result."
+                value={formData.outputFormat}
+                onChange={(e) => {
+                  setFormData({ ...formData, outputFormat: e.target.value });
+                  if (errors.outputFormat) setErrors({ ...errors, outputFormat: "" });
+                }}
+                disabled={isUpdating}
+                className={cn(
+                  "arena-input w-full min-h-[100px] resize-y font-mono text-sm",
+                  errors.outputFormat && "border-destructive"
+                )}
+              />
+              {errors.outputFormat && (
+                <p className="text-sm text-destructive mt-1">{errors.outputFormat}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Constraints */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <Label className="arena-label">Constraints</Label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addConstraint}
+                disabled={isUpdating}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add constraint
+              </Button>
+            </div>
+            <p className="text-sm text-muted-foreground mb-2">
+              One constraint per line (e.g. 1 ≤ n ≤ 10^5)
+            </p>
+            <div className="space-y-2">
+              {formData.constraints.map((c, index) => (
+                <div key={index} className="flex gap-2">
+                  <Input
+                    value={c}
+                    onChange={(e) => updateConstraint(index, e.target.value)}
+                    placeholder={`Constraint ${index + 1}`}
+                    disabled={isUpdating}
+                    className={cn(
+                      "arena-input flex-1 font-mono text-sm",
+                      errors[`constraints.${index}`] && "border-destructive"
+                    )}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removeConstraint(index)}
+                    disabled={isUpdating || formData.constraints.length <= 1}
+                    className="shrink-0 text-muted-foreground hover:text-destructive"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            {errors.constraints && (
+              <p className="text-sm text-destructive mt-1">{errors.constraints}</p>
+            )}
+          </div>
+
+          {/* Boilerplate templates */}
+          <div>
+            <Label className="arena-label flex items-center gap-2 mb-2">
+              <FileCode className="w-4 h-4" />
+              Boilerplate templates (per language)
+            </Label>
+            <p className="text-sm text-muted-foreground mb-3">
+              Optional starter code for C++, Python, Java, and JavaScript.
+            </p>
+            <Tabs defaultValue="cpp" className="w-full">
+              <TabsList className="bg-muted/50 w-full flex flex-wrap h-auto gap-1 p-1">
+                <TabsTrigger value="cpp">C++</TabsTrigger>
+                <TabsTrigger value="python">Python</TabsTrigger>
+                <TabsTrigger value="java">Java</TabsTrigger>
+                <TabsTrigger value="javascript">JavaScript</TabsTrigger>
+              </TabsList>
+              <TabsContent value="cpp" className="mt-2">
+                <Textarea
+                  value={formData.boilerplate.cpp}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      boilerplate: { ...formData.boilerplate, cpp: e.target.value },
+                    })
+                  }
+                  placeholder="#include &lt;bits/stdc++.h&gt;&#10;using namespace std;&#10;&#10;int main() { ... }"
+                  disabled={isUpdating}
+                  className="arena-input w-full min-h-[160px] resize-y font-mono text-sm"
+                />
+              </TabsContent>
+              <TabsContent value="python" className="mt-2">
+                <Textarea
+                  value={formData.boilerplate.python}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      boilerplate: { ...formData.boilerplate, python: e.target.value },
+                    })
+                  }
+                  placeholder="# Your code here&#10;def main():&#10;    pass"
+                  disabled={isUpdating}
+                  className="arena-input w-full min-h-[160px] resize-y font-mono text-sm"
+                />
+              </TabsContent>
+              <TabsContent value="java" className="mt-2">
+                <Textarea
+                  value={formData.boilerplate.java}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      boilerplate: { ...formData.boilerplate, java: e.target.value },
+                    })
+                  }
+                  placeholder="import java.util.*;&#10;&#10;public class Solution { ... }"
+                  disabled={isUpdating}
+                  className="arena-input w-full min-h-[160px] resize-y font-mono text-sm"
+                />
+              </TabsContent>
+              <TabsContent value="javascript" className="mt-2">
+                <Textarea
+                  value={formData.boilerplate.javascript}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      boilerplate: { ...formData.boilerplate, javascript: e.target.value },
+                    })
+                  }
+                  placeholder="const readline = require('readline');&#10;// Your code here"
+                  disabled={isUpdating}
+                  className="arena-input w-full min-h-[160px] resize-y font-mono text-sm"
+                />
+              </TabsContent>
+            </Tabs>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -499,7 +723,7 @@ export const EditDsaModal = ({
                           className={cn(
                             "arena-input w-full font-mono text-sm h-24",
                             errors[`testCases.${index}.input`] &&
-                              "border-destructive"
+                            "border-destructive"
                           )}
                         />
                         {errors[`testCases.${index}.input`] && (
@@ -526,7 +750,7 @@ export const EditDsaModal = ({
                           className={cn(
                             "arena-input w-full font-mono text-sm h-24",
                             errors[`testCases.${index}.expectedOutput`] &&
-                              "border-destructive"
+                            "border-destructive"
                           )}
                         />
                         {errors[`testCases.${index}.expectedOutput`] && (

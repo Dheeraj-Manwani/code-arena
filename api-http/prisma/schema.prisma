@@ -13,6 +13,7 @@ enum Role {
 }
 
 enum SubmissionStatus {
+  pending
   accepted
   wrong_answer
   time_limit_exceeded
@@ -32,9 +33,7 @@ enum Difficulty {
 
 enum ContestStatus {
   draft
-  scheduled
-  running
-  ended
+  published
   cancelled
 }
 
@@ -150,6 +149,11 @@ model DsaProblem {
   memoryLimit   Int         @default(256)
   difficulty    Difficulty?
   maxDurationMs Int?
+
+  boilerplate  Json @default("{}")
+  inputFormat String?
+  outputFormat String?
+  constraints String[] @default([])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

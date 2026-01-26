@@ -4,8 +4,11 @@ import type {
   DsaProblemsResponse,
   McqQuestion,
   DsaProblem,
+  AddMcqType,
+  AddDsaType,
+  UpdateMcqType,
+  UpdateDsaType,
 } from "@/schema/problem.schema";
-import type { AddMcqType, AddDsaType, UpdateMcqType, UpdateDsaType } from "@/schema/contest.schema";
 
 export const problemApi = {
   getAllMcqQuestions: async (

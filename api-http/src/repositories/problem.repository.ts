@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import prisma from "../lib/db";
-import { AddTestCaseType } from "../schema/contest.schema";
+import { AddTestCaseType } from "../schema/problem.schema";
 
 export const getMcqQuestion = async (questionId: number, contestId: number) => {
   return await prisma.mcqQuestion.findFirst({
@@ -95,8 +95,10 @@ export const createMcqQuestion = async (data: Prisma.McqQuestionUncheckedCreateI
 };
 
 export const createDsaProblem = async (data: Prisma.DsaProblemUncheckedCreateInput & { contestId: number, creatorId: number }, testCases: AddTestCaseType) => {
+  const { contestId, ...createData } = data;
+
   const maxOrder = await prisma.contestQuestion.findFirst({
-    where: { contestId: data.contestId },
+    where: { contestId },
     orderBy: { order: "desc" },
     select: { order: true },
   });
@@ -105,7 +107,7 @@ export const createDsaProblem = async (data: Prisma.DsaProblemUncheckedCreateInp
 
   const dsaProblem = await prisma.dsaProblem.create({
     data: {
-      ...data,
+      ...createData,
       testCases: {
         create: testCases.map((tc) => ({
           input: tc.input,
@@ -115,7 +117,7 @@ export const createDsaProblem = async (data: Prisma.DsaProblemUncheckedCreateInp
       },
       contestLinks: {
         create: {
-          contestId: data.contestId,
+          contestId,
           order: nextOrder,
         },
       },

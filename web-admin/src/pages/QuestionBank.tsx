@@ -54,9 +54,8 @@ const QuestionBank = () => {
   const {
     data: mcqData,
     isLoading: isLoadingMcqs,
-    refetch: refetchMcqs,
   } = useMcqQuestionsQuery(
-    mcqPage, 
+    mcqPage,
     ITEMS_PER_PAGE,
     debouncedMcqSearch || undefined
   );
@@ -65,9 +64,8 @@ const QuestionBank = () => {
   const {
     data: dsaData,
     isLoading: isLoadingDsa,
-    refetch: refetchDsa,
   } = useDsaProblemsQuery(
-    dsaPage, 
+    dsaPage,
     ITEMS_PER_PAGE,
     debouncedDsaSearch || undefined
   );
@@ -283,42 +281,42 @@ const QuestionBank = () => {
                       {currentMcqs.map((question) => {
                         // Options are already parsed by zod schema transform
                         const options = question.options;
-                        
+
                         return (
-                      <tr
-                        key={question.id}
-                        className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors"
-                      >
-                        <td className="py-4 px-4">
-                          <div className="flex items-start gap-3">
-                            <span className="text-muted-foreground mt-1">
-                              <FileText className="w-4 h-4" />
-                            </span>
-                            <span className="font-medium text-foreground line-clamp-2">
-                              {question.questionText}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="py-4 px-4 text-sm text-muted-foreground">
-                          {options.length} options
-                        </td>
-                        <td className="py-4 px-4 text-sm text-muted-foreground font-mono">
-                          {question.points}
-                        </td>
-                        <td className="py-4 px-4">
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => {
-                                setEditingMcq(question);
-                                setIsEditMcqOpen(true);
-                              }}
-                              className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+                          <tr
+                            key={question.id}
+                            className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors"
+                          >
+                            <td className="py-4 px-4">
+                              <div className="flex items-start gap-3">
+                                <span className="text-muted-foreground mt-1">
+                                  <FileText className="w-4 h-4" />
+                                </span>
+                                <span className="font-medium text-foreground line-clamp-2">
+                                  {question.questionText}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-4 px-4 text-sm text-muted-foreground">
+                              {options.length} options
+                            </td>
+                            <td className="py-4 px-4 text-sm text-muted-foreground font-mono">
+                              {question.points}
+                            </td>
+                            <td className="py-4 px-4">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  onClick={() => {
+                                    setEditingMcq(question);
+                                    setIsEditMcqOpen(true);
+                                  }}
+                                  className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
                         );
                       })}
                     </>
@@ -414,72 +412,72 @@ const QuestionBank = () => {
                   ) : (
                     <>
                       {currentDsa.map((problem) => (
-                      <tr
-                        key={problem.id}
-                        className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors"
-                      >
-                        <td className="py-4 px-4">
-                          <div className="flex items-start gap-3">
-                            <span className="text-muted-foreground mt-1">
-                              <Code className="w-4 h-4" />
-                            </span>
-                            <div>
-                              <span className="font-medium text-foreground font-mono">
-                                {problem.title}
+                        <tr
+                          key={problem.id}
+                          className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors"
+                        >
+                          <td className="py-4 px-4">
+                            <div className="flex items-start gap-3">
+                              <span className="text-muted-foreground mt-1">
+                                <Code className="w-4 h-4" />
                               </span>
-                              <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
-                                {problem.description}
-                              </p>
+                              <div>
+                                <span className="font-medium text-foreground font-mono">
+                                  {problem.title}
+                                </span>
+                                <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+                                  {problem.description}
+                                </p>
+                              </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="py-4 px-4">
-                          <div className="flex flex-wrap gap-1">
-                            {problem.tags.slice(0, 2).map((tag) => (
-                              <Badge
-                                key={tag}
-                                variant="secondary"
-                                className="text-xs"
+                          </td>
+                          <td className="py-4 px-4">
+                            <div className="flex flex-wrap gap-1">
+                              {problem.tags.slice(0, 2).map((tag) => (
+                                <Badge
+                                  key={tag}
+                                  variant="secondary"
+                                  className="text-xs"
+                                >
+                                  {tag}
+                                </Badge>
+                              ))}
+                              {problem.tags.length > 2 && (
+                                <Badge variant="outline" className="text-xs">
+                                  +{problem.tags.length - 2}
+                                </Badge>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-4 px-4">
+                            <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {problem.timeLimit}ms
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Database className="w-3 h-3" />
+                                {problem.memoryLimit}MB
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-4 px-4 text-sm text-muted-foreground font-mono">
+                            {problem.points}
+                          </td>
+                          <td className="py-4 px-4">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => {
+                                  setEditingDsa(problem);
+                                  setIsEditDsaOpen(true);
+                                }}
+                                className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
                               >
-                                {tag}
-                              </Badge>
-                            ))}
-                            {problem.tags.length > 2 && (
-                              <Badge variant="outline" className="text-xs">
-                                +{problem.tags.length - 2}
-                              </Badge>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-4 px-4">
-                          <div className="flex flex-col gap-1 text-xs text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              {problem.timeLimit}ms
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Database className="w-3 h-3" />
-                              {problem.memoryLimit}MB
-                            </span>
-                          </div>
-                        </td>
-                        <td className="py-4 px-4 text-sm text-muted-foreground font-mono">
-                          {problem.points}
-                        </td>
-                        <td className="py-4 px-4">
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => {
-                                setEditingDsa(problem);
-                                setIsEditDsaOpen(true);
-                              }}
-                              className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+                                <Edit className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
                       ))}
                     </>
                   )}

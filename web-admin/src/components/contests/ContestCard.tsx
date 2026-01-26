@@ -21,35 +21,27 @@ interface ContestCardProps {
 
 export const ContestCard = ({ contest, index = 0 }: ContestCardProps) => {
   const isPractice = contest.type === "practice";
-  const displayStatus = !isPractice ? contest.status : null;
+  const displayStatus = contest.status ?? null;
   const duration = getContestDuration(contest);
 
   const getStatusBadgeClass = (status: ContestStatus | null) => {
-    if (status === null || isPractice) {
-      // Practice contest badge
-      return "bg-blue-500/20 text-blue-400 border-blue-500/30";
+    if (status === null) {
+      return "bg-muted text-muted-foreground border-border";
     }
     switch (status) {
       case "draft":
-        return "bg-gray-500/20 text-gray-400 border-gray-500/30";
-      case "scheduled":
-        return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
-      case "running":
-        return "bg-green-500/20 text-green-400 border-green-500/30";
-      case "ended":
-        return "bg-muted text-muted-foreground border-border";
+        return "bg-amber-500/20 text-amber-400 border-amber-500/30";
+      case "published":
+        return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
       case "cancelled":
-        return "bg-red-500/20 text-red-400 border-red-500/30";
+        return "bg-destructive/20 text-destructive border-destructive/30";
       default:
         return "bg-muted text-muted-foreground border-border";
     }
   };
 
   const getBadgeText = () => {
-    if (isPractice) {
-      return "Practice";
-    }
-    return displayStatus ? displayStatus.charAt(0).toUpperCase() + displayStatus.slice(1) : "Scheduled";
+    return displayStatus ? displayStatus.charAt(0).toUpperCase() + displayStatus.slice(1) : "—";
   };
 
   return (
@@ -100,18 +92,18 @@ export const ContestCard = ({ contest, index = 0 }: ContestCardProps) => {
           </div>
 
           {/* Question counts */}
-          {(contest.mcqs || contest.dsaProblems) && (
+          {(contest.mcqCount || contest.dsaCount) && (
             <div className="flex items-center gap-4 mb-4 text-sm">
-              {contest.mcqs && (
+              {contest.mcqCount && (
                 <div className="flex items-center gap-1.5 text-muted-foreground">
                   <FileText className="w-4 h-4" />
-                  <span>{contest.mcqs.length} MCQs</span>
+                  <span>{contest.mcqCount} MCQs</span>
                 </div>
               )}
-              {contest.dsaProblems && (
+              {contest.dsaCount && (
                 <div className="flex items-center gap-1.5 text-muted-foreground">
                   <Code className="w-4 h-4" />
-                  <span>{contest.dsaProblems.length} DSA</span>
+                  <span>{contest.dsaCount} DSA</span>
                 </div>
               )}
             </div>

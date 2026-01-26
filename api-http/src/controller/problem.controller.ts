@@ -3,7 +3,7 @@ import { AuthRequest } from "../types/express.d";
 import * as problemService from "../service/problem.service";
 import { sendSuccess } from "../util/response";
 import { ProblemNotFoundError } from "../errors/problem.errors";
-import { AddMcqSchema, AddDsaSchema, UpdateMcqSchema, UpdateDsaSchema } from "../schema/contest.schema";
+import { AddMcqSchema, AddDsaSchema, UpdateMcqSchema, UpdateDsaSchema } from "../schema/problem.schema";
 
 export const getProblemById = async (req: AuthRequest, res: Response) => {
   const problemId = parseInt(String(req.params.problemId));
@@ -48,6 +48,10 @@ export const createDsaProblem = async (req: AuthRequest, res: Response) => {
       memoryLimit: data.memoryLimit,
       difficulty: data.difficulty,
       maxDurationMs: data.maxDurationMs,
+      boilerplate: data.boilerplate ?? {},
+      inputFormat: data.inputFormat ?? null,
+      outputFormat: data.outputFormat ?? null,
+      constraints: data.constraints ?? [],
     },
     data.testCases,
     req.userId
@@ -71,18 +75,24 @@ export const updateDsaProblem = async (req: AuthRequest, res: Response) => {
     throw new ProblemNotFoundError();
   }
   const data = UpdateDsaSchema.parse(req.body);
+  const updatePayload: Record<string, unknown> = {
+    title: data.title,
+    description: data.description,
+    tags: data.tags,
+    points: data.points,
+    timeLimit: data.timeLimit,
+    memoryLimit: data.memoryLimit,
+    difficulty: data.difficulty,
+    maxDurationMs: data.maxDurationMs,
+  };
+  if (data.boilerplate !== undefined) updatePayload.boilerplate = data.boilerplate;
+  if (data.inputFormat !== undefined) updatePayload.inputFormat = data.inputFormat;
+  if (data.outputFormat !== undefined) updatePayload.outputFormat = data.outputFormat;
+  if (data.constraints !== undefined) updatePayload.constraints = data.constraints;
+
   const dsaProblem = await problemService.updateDsaProblem(
     problemId,
-    {
-      title: data.title,
-      description: data.description,
-      tags: data.tags,
-      points: data.points,
-      timeLimit: data.timeLimit,
-      memoryLimit: data.memoryLimit,
-      difficulty: data.difficulty,
-      maxDurationMs: data.maxDurationMs,
-    },
+    updatePayload,
     data.testCases,
     req.userId
   );

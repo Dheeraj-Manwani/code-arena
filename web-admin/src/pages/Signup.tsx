@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { OtpVerification } from "@/components/auth/OtpVerification";
 import { toast } from "react-hot-toast";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Shield } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { pageVariants } from "@/lib/animations";
 import {
@@ -28,7 +28,7 @@ const Signup = () => {
     email: "",
     password: "",
     confirmPassword: "",
-    role: "contestee",
+    role: "creator",
   });
   const [otp, setOtp] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -120,19 +120,24 @@ const Signup = () => {
         exit="exit"
       >
         {/* Logo */}
-        <div className="text-center mb-4">
-          <div className="flex flex-col items-center gap-1 mb-2">
-            <img src="/logo.png" alt="Code Arena" className="h-12 w-auto" />
+        <div className="text-center mb-6">
+          <div className="flex flex-col items-center gap-2 mb-4">
+            <div className="w-16 h-16 rounded-lg bg-primary/20 border-2 border-primary/30 flex items-center justify-center mb-2">
+              <Shield className="h-8 w-8 text-primary" />
+            </div>
             <h1 className="font-mono text-3xl font-bold">
               <span className="text-primary">Code</span>
               <span className="text-foreground">Arena</span>
             </h1>
           </div>
-          <p className="text-muted-foreground">Admin Portal</p>
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-foreground uppercase tracking-wider">Administrator Access</p>
+            <p className="text-xs text-muted-foreground">Secure registration for authorized personnel only</p>
+          </div>
         </div>
 
         {/* Form */}
-        <div className="arena-card">
+        <div className="arena-card border-2 border-primary/20 bg-card/80 backdrop-blur-sm">
           <AnimatePresence mode="wait">
             {step === "registration" ? (
               <motion.div
@@ -142,9 +147,12 @@ const Signup = () => {
                 exit={{ opacity: 0, x: 20 }}
                 transition={{ duration: 0.2 }}
               >
-                <h2 className="text-xl font-mono font-semibold text-foreground mb-6">
-                  Create your account
-                </h2>
+                <div className="mb-6 pb-4 border-b border-border">
+                  <h2 className="text-xl font-mono font-semibold text-foreground mb-1">
+                    Create Admin Account
+                  </h2>
+                  <p className="text-xs text-muted-foreground">Enter your details to create an administrator account</p>
+                </div>
 
                 <form onSubmit={handleSubmit} className="space-y-5">
                   <div>
@@ -161,11 +169,10 @@ const Signup = () => {
                         if (errors.name) setErrors({ ...errors, name: "" });
                       }}
                       disabled={isSigningUp}
-                      className={`arena-input w-full ${
-                        errors.name
-                          ? "border-destructive focus:border-destructive"
-                          : ""
-                      }`}
+                      className={`arena-input w-full ${errors.name
+                        ? "border-destructive focus:border-destructive"
+                        : ""
+                        }`}
                     />
                     {errors.name && (
                       <p className="mt-1.5 text-sm text-destructive">
@@ -188,11 +195,10 @@ const Signup = () => {
                         if (errors.email) setErrors({ ...errors, email: "" });
                       }}
                       disabled={isSigningUp}
-                      className={`arena-input w-full ${
-                        errors.email
-                          ? "border-destructive focus:border-destructive"
-                          : ""
-                      }`}
+                      className={`arena-input w-full ${errors.email
+                        ? "border-destructive focus:border-destructive"
+                        : ""
+                        }`}
                     />
                     {errors.email && (
                       <p className="mt-1.5 text-sm text-destructive">
@@ -220,11 +226,10 @@ const Signup = () => {
                             setErrors({ ...errors, password: "" });
                         }}
                         disabled={isSigningUp}
-                        className={`arena-input w-full pr-10 ${
-                          errors.password
-                            ? "border-destructive focus:border-destructive"
-                            : ""
-                        }`}
+                        className={`arena-input w-full pr-10 ${errors.password
+                          ? "border-destructive focus:border-destructive"
+                          : ""
+                          }`}
                       />
                       <button
                         type="button"
@@ -270,11 +275,10 @@ const Signup = () => {
                             setErrors({ ...errors, confirmPassword: "" });
                         }}
                         disabled={isSigningUp}
-                        className={`arena-input w-full pr-10 ${
-                          errors.confirmPassword
-                            ? "border-destructive focus:border-destructive"
-                            : ""
-                        }`}
+                        className={`arena-input w-full pr-10 ${errors.confirmPassword
+                          ? "border-destructive focus:border-destructive"
+                          : ""
+                          }`}
                       />
                       <button
                         type="button"
@@ -307,7 +311,7 @@ const Signup = () => {
                     className="w-full"
                     disabled={isSigningUp}
                   >
-                    {isSigningUp ? "Sending OTP..." : "Create Account"}
+                    {isSigningUp ? "Creating Account..." : "Create Admin Account"}
                   </Button>
                 </form>
 
@@ -335,7 +339,7 @@ const Signup = () => {
                   email={formData.email}
                   title="Verify your email"
                   description="Enter the 6-digit code sent to"
-                  submitLabel="Verify & Create Account"
+                  submitLabel="Verify & Create Admin Account"
                   submitLoadingLabel="Verifying..."
                   isSubmitting={isVerifyingOtp}
                   error={errors.otp}

@@ -1,0 +1,374 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "allotment/dist/style.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  /* Border radius */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  
+  /* Colors - standard tokens */
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  
+  /* Sidebar colors - using dot notation for nested colors */
+  --color-sidebar: hsl(var(--sidebar-background));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+  
+  /* Arena custom colors */
+  --color-arena-red: hsl(var(--arena-red));
+  --color-arena-success: hsl(var(--arena-success));
+  --color-arena-warning: hsl(var(--arena-warning));
+  --color-arena-surface: hsl(var(--arena-surface));
+  --color-arena-surface-elevated: hsl(var(--arena-surface-elevated));
+  --color-arena-badge-bg: hsl(var(--arena-badge-bg));
+  --color-arena-code-bg: hsl(var(--arena-code-bg));
+  
+  /* Font families */
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+:root {
+  --radius: 0.5rem;
+
+  /* Allotment split-panes – match app theme */
+  --focus-border: hsl(var(--primary));
+  --separator-border: hsl(var(--border));
+  --sash-size: 10px;
+  --sash-hover-size: 6px;
+  
+  /* Standard color tokens */
+  --background: 0 0% 4%;
+  --foreground: 0 0% 95%;
+
+  --card: 0 0% 7%;
+  --card-foreground: 0 0% 95%;
+
+  --popover: 0 0% 7%;
+  --popover-foreground: 0 0% 95%;
+
+  --primary: 0 72% 51%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 0 0% 12%;
+  --secondary-foreground: 0 0% 95%;
+
+  --muted: 0 0% 15%;
+  --muted-foreground: 0 0% 55%;
+
+  --accent: 0 0% 12%;
+  --accent-foreground: 0 0% 95%;
+
+  --destructive: 0 62% 50%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 0 0% 18%;
+  --input: 0 0% 12%;
+  --ring: 0 72% 51%;
+
+  /* Sidebar tokens */
+  --sidebar-background: 0 0% 6%;
+  --sidebar-foreground: 0 0% 65%;
+  --sidebar-primary: 0 72% 51%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 0 0% 10%;
+  --sidebar-accent-foreground: 0 0% 95%;
+  --sidebar-border: 0 0% 14%;
+  --sidebar-ring: 0 72% 51%;
+
+  /* Arena custom tokens */
+  --arena-red: 0 72% 51%;
+  --arena-red-glow: 0 72% 51% / 0.15;
+  --arena-surface: 0 0% 7%;
+  --arena-surface-elevated: 0 0% 9%;
+  --arena-badge-bg: 0 0% 20%;
+  --arena-success: 142 76% 36%;
+  --arena-success-glow: 142 76% 36%;
+  --arena-warning: 38 92% 50%;
+  --arena-code-bg: 0 0% 6%;
+}
+
+.dark {
+  --background: 0 0% 4%;
+  --foreground: 0 0% 95%;
+
+  --card: 0 0% 7%;
+  --card-foreground: 0 0% 95%;
+
+  --popover: 0 0% 7%;
+  --popover-foreground: 0 0% 95%;
+
+  --primary: 0 72% 51%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 0 0% 12%;
+  --secondary-foreground: 0 0% 95%;
+
+  --muted: 0 0% 15%;
+  --muted-foreground: 0 0% 55%;
+
+  --accent: 0 0% 12%;
+  --accent-foreground: 0 0% 95%;
+
+  --destructive: 0 62% 50%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 0 0% 18%;
+  --input: 0 0% 12%;
+  --ring: 0 72% 51%;
+
+  --sidebar-background: 0 0% 6%;
+  --sidebar-foreground: 0 0% 65%;
+  --sidebar-primary: 0 72% 51%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 0 0% 10%;
+  --sidebar-accent-foreground: 0 0% 95%;
+  --sidebar-border: 0 0% 14%;
+  --sidebar-ring: 0 72% 51%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: "Inter", system-ui, sans-serif;
+  }
+
+  #root {
+    @apply h-full overflow-hidden;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: "JetBrains Mono", monospace;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--primary) / 0.3) hsl(var(--muted));
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: hsl(var(--muted));
+    border-radius: 4px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary) / 0.4);
+    border-radius: 4px;
+    border: 1px solid hsl(var(--muted));
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary) / 0.6);
+  }
+
+  *::-webkit-scrollbar-thumb:active {
+    background: hsl(var(--primary));
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--primary) / 0.3) hsl(var(--muted));
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+}
+
+@layer components {
+  .arena-glow {
+    box-shadow: 0 0 20px hsl(var(--arena-red) / 0.15),
+                0 0 40px hsl(var(--arena-red) / 0.1);
+  }
+
+  .arena-glow-success {
+    box-shadow: 0 0 20px hsl(var(--arena-success) / 0.15),
+                0 0 40px hsl(var(--arena-success) / 0.1);
+  }
+
+  .arena-card {
+    @apply bg-card border border-border rounded-lg p-5 transition-all duration-200;
+  }
+
+  .arena-card:hover {
+    @apply border-primary/30;
+  }
+
+  .arena-stat-card {
+    @apply bg-card border border-border rounded-lg p-5;
+  }
+
+  .arena-badge {
+    @apply inline-flex items-center px-2.5 py-1 text-xs font-medium rounded bg-muted text-muted-foreground uppercase tracking-wider;
+    font-family: "JetBrains Mono", monospace;
+  }
+
+  .arena-badge-draft {
+    @apply inline-flex items-center px-2.5 py-1 text-xs font-medium rounded bg-muted text-foreground uppercase tracking-wider;
+    font-family: "JetBrains Mono", monospace;
+  }
+
+  .arena-badge-active {
+    @apply inline-flex items-center px-2.5 py-1 text-xs font-medium rounded bg-primary/20 text-primary uppercase tracking-wider;
+    font-family: "JetBrains Mono", monospace;
+  }
+
+  .arena-section-title {
+    @apply text-lg font-semibold text-foreground flex items-center gap-2;
+    font-family: "JetBrains Mono", monospace;
+  }
+
+  .arena-section-title::before {
+    content: "";
+    @apply w-1 h-5 bg-primary rounded-full;
+  }
+
+  .arena-input {
+    @apply bg-input border border-border rounded-md px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all;
+  }
+
+  /* Hide number input spinners */
+  .arena-input[type="number"]::-webkit-inner-spin-button,
+  .arena-input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  .arena-input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  .arena-label {
+    @apply text-sm font-medium text-muted-foreground mb-2 block;
+  }
+
+  .arena-surface {
+    background: hsl(var(--arena-surface));
+  }
+
+  .arena-surface-elevated {
+    background: hsl(var(--arena-surface-elevated));
+  }
+
+  .code-block {
+    @apply font-mono text-sm p-3 rounded-md;
+    background: hsl(var(--arena-code-bg));
+  }
+
+  .test-case-passed {
+    @apply border-l-4;
+    border-left-color: hsl(var(--arena-success));
+  }
+
+  .test-case-failed {
+    @apply border-l-4;
+    border-left-color: hsl(var(--destructive));
+  }
+
+  /* Allotment: resizable boundary indicators (grip + subtle default tint) */
+  [class*="sash-module_sash"]::before {
+    background: hsl(var(--border) / 0.35);
+  }
+
+  [class*="sash-module_sash"][class*="vertical"]::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 4px;
+    height: 24px;
+    pointer-events: none;
+    background-image: radial-gradient(
+      circle at center,
+      hsl(var(--muted-foreground) / 0.6) 1.25px,
+      transparent 1.25px
+    );
+    background-size: 100% 5px;
+    background-repeat: repeat-y;
+  }
+
+  [class*="sash-module_sash"][class*="horizontal"]::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 24px;
+    height: 4px;
+    pointer-events: none;
+    background-image: radial-gradient(
+      circle at center,
+      hsl(var(--muted-foreground) / 0.6) 1.25px,
+      transparent 1.25px
+    );
+    background-size: 5px 100%;
+    background-repeat: repeat-x;
+  }
+}
+
+@layer utilities {
+  .animate-in {
+    animation: animate-in 0.2s ease-out;
+  }
+
+  .fade-in-0 {
+    --tw-enter-opacity: 0;
+  }
+
+  .slide-in-from-bottom-2 {
+    --tw-enter-translate-y: 0.5rem;
+  }
+
+  @keyframes animate-in {
+    from {
+      opacity: var(--tw-enter-opacity, 1);
+      transform: translateY(var(--tw-enter-translate-y, 0));
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}

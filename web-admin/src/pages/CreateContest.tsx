@@ -37,7 +37,7 @@ import { toast } from "react-hot-toast";
 import type { McqQuestion, DsaProblem, ContestQuestion } from "@/schema/problem.schema";
 import { useMcqQuestionsQuery, useDsaProblemsQuery } from "@/queries/problem.queries";
 import { useCreateMcqQuestionMutation, useCreateDsaProblemMutation } from "@/queries/problem.mutations";
-import type { AddMcqType, AddDsaType } from "@/schema/contest.schema";
+import type { AddMcqType, AddDsaType } from "@/schema/problem.schema";
 import { McqForm } from "@/components/questions/McqForm";
 import { DsaForm } from "@/components/questions/DsaForm";
 import { cn, convertHHmmToMilliseconds } from "@/lib/utils";
@@ -126,7 +126,7 @@ const CreateContest = () => {
   // Only fetch when there's a search query
   const shouldFetchMcq = !!debouncedMcqSearch && debouncedMcqSearch.trim() !== "";
   const shouldFetchDsa = !!debouncedDsaSearch && debouncedDsaSearch.trim() !== "";
-  
+
   const { data: mcqData, isLoading: isLoadingMcq, isFetching: isFetchingMcq } = useMcqQuestionsQuery(
     1,
     initialLimit,
@@ -141,7 +141,7 @@ const CreateContest = () => {
   );
   const { mutate: createMcq, isPending: isCreatingMcq } = useCreateMcqQuestionMutation();
   const { mutate: createDsa, isPending: isCreatingDsa } = useCreateDsaProblemMutation();
-  
+
   const isCreatingQuestion = isCreatingMcq || isCreatingDsa;
 
   // Filter out questions already added to contest
@@ -171,15 +171,15 @@ const CreateContest = () => {
         ...(formData.type === "competitive" &&
           formData.startTime &&
           formData.endTime && {
-            startTime: new Date(formData.startTime).toISOString(),
-            endTime: new Date(formData.endTime).toISOString(),
-          }),
+          startTime: new Date(formData.startTime).toISOString(),
+          endTime: new Date(formData.endTime).toISOString(),
+        }),
         // Include maxDurationMs only for practice contests (convert HH:mm to milliseconds)
         ...(formData.type === "practice" &&
           formData.maxDurationTime &&
           formData.maxDurationTime.trim() !== "" && {
-            maxDurationMs: convertHHmmToMilliseconds(formData.maxDurationTime),
-          }),
+          maxDurationMs: convertHHmmToMilliseconds(formData.maxDurationTime),
+        }),
         // Include questions with proper order
         questions: contestQuestions.map((question) => ({
           type: question.type,
@@ -190,7 +190,7 @@ const CreateContest = () => {
 
       // Validate using zod schema
       const result = CreateContestSchema.safeParse(contestData);
-      
+
       if (!result.success) {
         const fieldErrors: Record<string, string> = {};
         result.error.issues.forEach((err) => {
@@ -278,8 +278,8 @@ const CreateContest = () => {
           options: Array.isArray(createdMcq.options)
             ? createdMcq.options
             : typeof createdMcq.options === "string"
-            ? JSON.parse(createdMcq.options)
-            : [],
+              ? JSON.parse(createdMcq.options)
+              : [],
           createdAt: typeof createdMcq.createdAt === "string"
             ? new Date(createdMcq.createdAt)
             : createdMcq.createdAt,
@@ -414,88 +414,86 @@ const CreateContest = () => {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="flex flex-col gap-2">
-  <Label htmlFor="type" className="arena-label">
-    Contest Type
-  </Label>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="type" className="arena-label">
+                    Contest Type
+                  </Label>
 
-  <Select
-    value={formData.type}
-    onValueChange={(value) => {
-      const newType = value as "practice" | "competitive";
-      setFormData({
-        ...formData,
-        type: newType,
-        ...(newType === "practice" && {
-          startTime: "",
-          endTime: "",
-        }),
-        ...(newType === "competitive" && {
-          maxDurationTime: "",
-        }),
-      });
-      // Clear related errors when switching types
-      setErrors({});
-    }}
-    disabled={isCreating}
-  >
-    <SelectTrigger id="type" className="w-full h-10 arena-input">
-      <SelectValue placeholder="Select contest type" />
-    </SelectTrigger>
-    <SelectContent>
-      <SelectItem value="competitive">Competitive</SelectItem>
-      <SelectItem value="practice">Practice</SelectItem>
-    </SelectContent>
-  </Select>
-</div>
+                  <Select
+                    value={formData.type}
+                    onValueChange={(value) => {
+                      const newType = value as "practice" | "competitive";
+                      setFormData({
+                        ...formData,
+                        type: newType,
+                        ...(newType === "practice" && {
+                          startTime: "",
+                          endTime: "",
+                        }),
+                        ...(newType === "competitive" && {
+                          maxDurationTime: "",
+                        }),
+                      });
+                      // Clear related errors when switching types
+                      setErrors({});
+                    }}
+                    disabled={isCreating}
+                  >
+                    <SelectTrigger id="type" className="w-full h-10 arena-input">
+                      <SelectValue placeholder="Select contest type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="competitive">Competitive</SelectItem>
+                      <SelectItem value="practice">Practice</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-<div className="flex flex-col gap-2">
-  <div className="flex items-center gap-2">
-    <Label htmlFor="status" className="arena-label">
-      Contest Status
-    </Label>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="status" className="arena-label">
+                      Contest Status
+                    </Label>
 
-    <Button
-      type="button"
-      variant="ghost"
-      size="sm"
-      className="h-5 w-5 p-0 group relative -translate-y-1"
-      onClick={(e) => {
-        e.preventDefault();
-        setIsStatusInfoOpen(true);
-      }}
-      title="Click to learn about contest statuses"
-    >
-      <Info className="w-4 h-4 text-blue-500 hover:text-blue-600 transition-all duration-300 group-hover:scale-125 group-hover:rotate-12 animate-pulse hover:animate-none" />
-      <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
-        Learn about statuses
-      </span>
-      <span className="absolute inset-0 rounded-full bg-blue-500/30 opacity-0 group-hover:opacity-100 group-hover:animate-ping transition-opacity duration-300" />
-    </Button>
-  </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-5 w-5 p-0 group relative -translate-y-1"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setIsStatusInfoOpen(true);
+                      }}
+                      title="Click to learn about contest statuses"
+                    >
+                      <Info className="w-4 h-4 text-blue-500 hover:text-blue-600 transition-all duration-300 group-hover:scale-125 group-hover:rotate-12 animate-pulse hover:animate-none" />
+                      <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
+                        Learn about statuses
+                      </span>
+                      <span className="absolute inset-0 rounded-full bg-blue-500/30 opacity-0 group-hover:opacity-100 group-hover:animate-ping transition-opacity duration-300" />
+                    </Button>
+                  </div>
 
-  <Select
-    value={formData.status}
-    onValueChange={(value) =>
-      setFormData({
-        ...formData,
-        status: value as ContestStatus,
-      })
-    }
-    disabled={isCreating}
-  >
-    <SelectTrigger id="status" className="w-full h-10 arena-input">
-      <SelectValue placeholder="Select status" />
-    </SelectTrigger>
-    <SelectContent>
-      <SelectItem value="draft">Draft</SelectItem>
-      <SelectItem value="scheduled">Scheduled</SelectItem>
-      <SelectItem value="running">Running</SelectItem>
-      <SelectItem value="ended">Ended</SelectItem>
-      <SelectItem value="cancelled">Cancelled</SelectItem>
-    </SelectContent>
-  </Select>
-</div>
+                  <Select
+                    value={formData.status}
+                    onValueChange={(value) =>
+                      setFormData({
+                        ...formData,
+                        status: value as ContestStatus,
+                      })
+                    }
+                    disabled={isCreating}
+                  >
+                    <SelectTrigger id="status" className="w-full h-10 arena-input">
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="draft">Draft</SelectItem>
+                      <SelectItem value="published">Published</SelectItem>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
               </div>
 
@@ -563,82 +561,82 @@ const CreateContest = () => {
               )}
 
               {formData.type === "practice" && (
-              <div>
-                <Label htmlFor="maxDurationTime" className="arena-label">
+                <div>
+                  <Label htmlFor="maxDurationTime" className="arena-label">
                     Max Duration (hh:mm) <span className="text-destructive">*</span>
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="maxDurationTime"
-                    type="text"
-                    placeholder="HH:mm"
-                    value={formData.maxDurationTime}
-                    onChange={(e) => {
-                      let value = e.target.value;
-                      // Allow only digits and colon
-                      value = value.replace(/[^\d:]/g, "");
-                      // Limit to HH:mm format
-                      if (value.length > 5) return;
-                      // Auto-format as user types
-                      if (value.length === 2 && !value.includes(":")) {
-                        value = value + ":";
-                      }
-                      setFormData({
-                        ...formData,
-                        maxDurationTime: value,
-                      });
-                      if (errors.maxDurationMs) {
-                        setErrors({ ...errors, maxDurationMs: "" });
-                      }
-                    }}
-                    onBlur={(e) => {
-                      // Validate and format on blur
-                      const value = e.target.value.trim();
-                      if (value && !/^\d{1,2}:\d{2}$/.test(value)) {
-                        toast.error("Please enter time in HH:mm format (e.g., 01:30)");
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="maxDurationTime"
+                      type="text"
+                      placeholder="HH:mm"
+                      value={formData.maxDurationTime}
+                      onChange={(e) => {
+                        let value = e.target.value;
+                        // Allow only digits and colon
+                        value = value.replace(/[^\d:]/g, "");
+                        // Limit to HH:mm format
+                        if (value.length > 5) return;
+                        // Auto-format as user types
+                        if (value.length === 2 && !value.includes(":")) {
+                          value = value + ":";
+                        }
                         setFormData({
                           ...formData,
-                          maxDurationTime: "",
+                          maxDurationTime: value,
                         });
-                        return;
-                      }
-                      // Format to ensure 2 digits for hours and minutes
-                      if (value) {
-                        const [hours, minutes] = value.split(":");
-                        const formattedHours = String(parseInt(hours || "0")).padStart(2, "0");
-                        const formattedMinutes = String(parseInt(minutes || "0")).padStart(2, "0");
-                        if (parseInt(formattedMinutes) >= 60) {
-                          toast.error("Minutes must be less than 60");
+                        if (errors.maxDurationMs) {
+                          setErrors({ ...errors, maxDurationMs: "" });
+                        }
+                      }}
+                      onBlur={(e) => {
+                        // Validate and format on blur
+                        const value = e.target.value.trim();
+                        if (value && !/^\d{1,2}:\d{2}$/.test(value)) {
+                          toast.error("Please enter time in HH:mm format (e.g., 01:30)");
                           setFormData({
                             ...formData,
                             maxDurationTime: "",
                           });
                           return;
                         }
-                        setFormData({
-                          ...formData,
-                          maxDurationTime: `${formattedHours}:${formattedMinutes}`,
-                        });
-                      }
-                    }}
-                    disabled={isCreating}
-                    className={cn(
-                      "arena-input w-full h-10 pl-10",
-                      errors.maxDurationMs && "border-destructive"
-                    )}
-                    pattern="[0-9]{2}:[0-9]{2}"
-                  />
-                  <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-                </div>
-                {errors.maxDurationMs && (
-                  <p className="text-sm text-destructive mt-1">
-                    {errors.maxDurationMs}
-                  </p>
-                )}
-                <p className="text-xs text-muted-foreground mt-1">
+                        // Format to ensure 2 digits for hours and minutes
+                        if (value) {
+                          const [hours, minutes] = value.split(":");
+                          const formattedHours = String(parseInt(hours || "0")).padStart(2, "0");
+                          const formattedMinutes = String(parseInt(minutes || "0")).padStart(2, "0");
+                          if (parseInt(formattedMinutes) >= 60) {
+                            toast.error("Minutes must be less than 60");
+                            setFormData({
+                              ...formData,
+                              maxDurationTime: "",
+                            });
+                            return;
+                          }
+                          setFormData({
+                            ...formData,
+                            maxDurationTime: `${formattedHours}:${formattedMinutes}`,
+                          });
+                        }
+                      }}
+                      disabled={isCreating}
+                      className={cn(
+                        "arena-input w-full h-10 pl-10",
+                        errors.maxDurationMs && "border-destructive"
+                      )}
+                      pattern="[0-9]{2}:[0-9]{2}"
+                    />
+                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                  </div>
+                  {errors.maxDurationMs && (
+                    <p className="text-sm text-destructive mt-1">
+                      {errors.maxDurationMs}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-1">
                     Maximum duration for contestants to complete the contest. Minimum 1 minute (00:01).
-                </p>
-              </div>
+                  </p>
+                </div>
               )}
 
               <div className="flex justify-end pt-4">
@@ -767,11 +765,11 @@ const CreateContest = () => {
                           {/* Loading indicator when searching (only show when there's a search query) */}
                           {((isFetchingMcq && importQuestionType === "mcq" && debouncedMcqSearch) ||
                             (isFetchingDsa && importQuestionType === "dsa" && debouncedDsaSearch)) && (
-                            <div className="flex items-center justify-center py-2 gap-2 text-sm text-muted-foreground mb-2">
-                              <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                              Searching...
-                            </div>
-                          )}
+                              <div className="flex items-center justify-center py-2 gap-2 text-sm text-muted-foreground mb-2">
+                                <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                                Searching...
+                              </div>
+                            )}
 
                           {/* Question List */}
                           <div className="overflow-y-auto max-h-[400px] space-y-2">
@@ -998,7 +996,7 @@ const CreateContest = () => {
                         className={cn(
                           "flex items-center gap-3 p-3 rounded-lg bg-muted/30 border border-transparent transition-all",
                           dragIndex === index &&
-                            "border-primary/50 bg-primary/5"
+                          "border-primary/50 bg-primary/5"
                         )}
                       >
                         <GripVertical className="w-4 h-4 text-muted-foreground cursor-grab" />
@@ -1066,7 +1064,7 @@ const CreateContest = () => {
                   <div>
                     <span className="font-medium text-foreground">Contest Type:</span>
                     <ul className="mt-1 ml-4 space-y-1">
-                      <li>- <span className="font-medium">Practice:</span> Requires max duration (minimum 1 minute)</li>
+                      <li>- <span className="font-medium">Practice:</span> Requires duration</li>
                       <li>- <span className="font-medium">Competitive:</span> Requires start and end time</li>
                     </ul>
                   </div>
@@ -1091,10 +1089,7 @@ const CreateContest = () => {
                   <span className="text-primary">•</span>
                   DSA problems include test cases with time/memory limits.
                 </li>
-                <li className="flex gap-2">
-                  <span className="text-primary">•</span>
-                  Max duration for questions must be at least 1 minute.
-                </li>
+
               </ul>
             </div>
           </div>

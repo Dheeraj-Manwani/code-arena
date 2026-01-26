@@ -1,4 +1,4 @@
-import { ContestStatus, Prisma } from "@prisma/client";
+import { ContestStatus, ContestType, Prisma } from "@prisma/client";
 import prisma from "../lib/db";
 
 export const checkIfContestExists = async (contestId: number) => {
@@ -10,10 +10,11 @@ export const checkIfContestExists = async (contestId: number) => {
   return Boolean(contest);
 };
 
-
-export const createContest = async (data: Prisma.ContestUncheckedCreateInput) => {
+export const createContest = async (
+  data: Prisma.ContestUncheckedCreateInput,
+) => {
   return await prisma.contest.create({
-    data
+    data,
   });
 };
 
@@ -23,6 +24,7 @@ export const getContests = async ({
   showAll,
   search,
   status,
+  type,
   sortBy,
 }: {
   page: number;
@@ -30,6 +32,7 @@ export const getContests = async ({
   showAll: boolean;
   search?: string;
   status?: string;
+  type?: ContestType;
   sortBy?: string;
 }) => {
   const skip = (page - 1) * limit;
@@ -39,30 +42,47 @@ export const getContests = async ({
 
   // Status filter
   if (!showAll && !status) {
+    // Non-creators can only see non-draft and non-cancelled contests by default
     whereConditions.push({
-      status: {
-        in: [
-          ContestStatus.scheduled,
-          ContestStatus.running,
-          ContestStatus.ended,
-        ],
-      },
+      status:
+        ContestStatus.published
+
+
     });
   } else if (status && status !== "all") {
     // Map status string to ContestStatus enum
     const statusMap: Record<string, ContestStatus> = {
       draft: ContestStatus.draft,
-      scheduled: ContestStatus.scheduled,
-      running: ContestStatus.running,
-      ended: ContestStatus.ended,
+      published: ContestStatus.published,
       cancelled: ContestStatus.cancelled,
     };
 
     if (statusMap[status]) {
-      whereConditions.push({
-        status: statusMap[status],
-      });
+      const requestedStatus = statusMap[status];
+
+      // Non-creators cannot access draft or cancelled contests
+      if (!showAll && requestedStatus !== ContestStatus.published) {
+        // Return empty results by using an impossible condition
+        whereConditions.push({
+          id: -1, // This will never match any contest
+        });
+      } else {
+        whereConditions.push({
+          status: requestedStatus,
+        });
+      }
     }
+  } else if (!showAll) {
+    // If status is "all" but user is not creator, still filter out draft and cancelled
+    whereConditions.push({
+      status: ContestStatus.published
+    });
+  }
+
+  if (type) {
+    whereConditions.push({
+      type,
+    });
   }
 
   // Search filter
@@ -85,9 +105,8 @@ export const getContests = async ({
     });
   }
 
-  const where = whereConditions.length > 0
-    ? { AND: whereConditions }
-    : undefined;
+  const where =
+    whereConditions.length > 0 ? { AND: whereConditions } : undefined;
 
   // Build orderBy clause
   let orderBy: Prisma.ContestOrderByWithRelationInput = { createdAt: "desc" };
@@ -123,6 +142,33 @@ export const getContests = async ({
       take: limit,
       where,
       orderBy,
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        startTime: true,
+        endTime: true,
+        maxDurationMs: true,
+        type: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        creatorId: true,
+        questions: {
+          select: {
+            mcq: {
+              select: {
+                id: true,
+              },
+            },
+            dsa: {
+              select: {
+                id: true,
+              },
+            },
+          },
+        },
+      },
     }),
     prisma.contest.count({ where }),
   ]);
@@ -133,8 +179,7 @@ export const getContests = async ({
   };
 };
 
-
-export const getContestByIdWithProblems = async (contestId: number) => {
+export const getContestByIdWithProblems = async (contestId: number, includeHiddenTestCases: boolean = false) => {
   return await prisma.contest.findUnique({
     where: { id: contestId },
     include: {
@@ -145,7 +190,12 @@ export const getContestByIdWithProblems = async (contestId: number) => {
               id: true,
               questionText: true,
               options: true,
+              correctOptionIndex: true,
               points: true,
+              maxDurationMs: true,
+              createdAt: true,
+              updatedAt: true,
+              creatorId: true,
             },
           },
           dsa: {
@@ -157,6 +207,28 @@ export const getContestByIdWithProblems = async (contestId: number) => {
               points: true,
               timeLimit: true,
               memoryLimit: true,
+              difficulty: true,
+              maxDurationMs: true,
+              boilerplate: true,
+              inputFormat: true,
+              outputFormat: true,
+              constraints: true,
+              createdAt: true,
+              updatedAt: true,
+              creatorId: true,
+              testCases: {
+                select: {
+                  id: true,
+                  input: true,
+                  expectedOutput: true,
+                  isHidden: true,
+                  createdAt: true,
+                  problemId: true,
+                },
+                where: {
+                  ...(includeHiddenTestCases ? {} : { isHidden: false }),
+                },
+              },
             },
           },
         },
@@ -182,7 +254,7 @@ export const getContestQuestionCount = async (contestId: number) => {
 
 export const updateContest = async (
   contestId: number,
-  data: Prisma.ContestUpdateInput
+  data: Prisma.ContestUpdateInput,
 ) => {
   return await prisma.contest.update({
     where: { id: contestId },
@@ -192,17 +264,65 @@ export const updateContest = async (
       ...(data.startTime !== undefined && { startTime: data.startTime }),
       ...(data.endTime !== undefined && { endTime: data.endTime }),
       ...(data.type !== undefined && { type: data.type }),
-      ...(data.maxDurationMs !== undefined && { maxDurationMs: data.maxDurationMs }),
+      ...(data.maxDurationMs !== undefined && {
+        maxDurationMs: data.maxDurationMs,
+      }),
       ...(data.status !== undefined && { status: data.status }),
-
     },
-
   });
+};
+
+const dashboardContestSelect = {
+  id: true,
+  title: true,
+  description: true,
+  startTime: true,
+  endTime: true,
+  maxDurationMs: true,
+  type: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+  creatorId: true,
+  questions: {
+    select: {
+      mcq: { select: { id: true } },
+      dsa: { select: { id: true } },
+    },
+  },
+} as const;
+
+export const getDashboardFeedData = async () => {
+  const [competitive, practice] = await Promise.all([
+    prisma.contest.findMany({
+      where: {
+        type: ContestType.competitive,
+        status: ContestStatus.published,
+        endTime: {
+          gte: new Date(),
+        },
+      },
+      take: 6,
+      orderBy: { startTime: "asc" },
+      select: dashboardContestSelect,
+    }),
+    prisma.contest.findMany({
+      where: {
+        type: ContestType.practice,
+        status: ContestStatus.published,
+      },
+      take: 6,
+      orderBy: { createdAt: "desc" },
+      select: dashboardContestSelect,
+    }),
+  ]);
+
+  return { competitive, practice };
 };
 
 export const getOrCreateContestAttempt = async (
   userId: number,
-  contestId: number
+  contestId: number,
 ) => {
   // Try to find an existing in-progress attempt
   const existingAttempt = await prisma.contestAttempt.findFirst({

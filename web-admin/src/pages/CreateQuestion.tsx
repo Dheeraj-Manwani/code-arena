@@ -8,6 +8,7 @@ import {
   Check,
   Clock,
   Database,
+  FileCode,
 } from "lucide-react";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Button } from "@/components/ui/button";
@@ -26,8 +27,8 @@ import { toast } from "react-hot-toast";
 import { cn } from "@/lib/utils";
 import { motion } from "motion/react";
 import { pageVariants } from "@/lib/animations";
-import { AddMcqSchema, AddDsaSchema } from "@/schema/contest.schema";
-import type { AddMcqType, AddDsaType } from "@/schema/contest.schema";
+import { AddMcqSchema, AddDsaSchema, type AddMcqType, type AddDsaType } from "@/schema/problem.schema";
+
 import {
   useCreateMcqQuestionMutation,
   useCreateDsaProblemMutation,
@@ -72,6 +73,10 @@ const CreateQuestion = () => {
     memoryLimit: 256,
     difficulty: "" as "easy" | "medium" | "hard" | "",
     maxDurationMs: "",
+    inputFormat: "",
+    outputFormat: "",
+    constraints: [""],
+    boilerplate: { cpp: "", python: "", java: "", javascript: "" },
   });
   const [testCases, setTestCases] = useState<TestCase[]>([
     { id: "1", input: "", expectedOutput: "", isHidden: false },
@@ -188,6 +193,22 @@ const CreateQuestion = () => {
     );
   };
 
+  const addConstraint = () => {
+    setDsaForm((f) => ({ ...f, constraints: [...f.constraints, ""] }));
+  };
+  const removeConstraint = (index: number) => {
+    setDsaForm((f) => ({
+      ...f,
+      constraints: f.constraints.filter((_, i) => i !== index),
+    }));
+  };
+  const updateConstraint = (index: number, value: string) => {
+    setDsaForm((f) => ({
+      ...f,
+      constraints: f.constraints.map((c, i) => (i === index ? value : c)),
+    }));
+  };
+
   const handleSubmitMcq = async (e: React.FormEvent) => {
     e.preventDefault();
     setMcqErrors({});
@@ -199,8 +220,8 @@ const CreateQuestion = () => {
       points: mcqForm.points,
       ...(mcqForm.maxDurationMs &&
         mcqForm.maxDurationMs.trim() !== "" && {
-          maxDurationMs: parseInt(mcqForm.maxDurationMs) || undefined,
-        }),
+        maxDurationMs: parseInt(mcqForm.maxDurationMs) || undefined,
+      }),
     };
 
     // Validate using zod schema
@@ -250,13 +271,22 @@ const CreateQuestion = () => {
       ...(dsaForm.difficulty && { difficulty: dsaForm.difficulty }),
       ...(dsaForm.maxDurationMs &&
         dsaForm.maxDurationMs.trim() !== "" && {
-          maxDurationMs: parseInt(dsaForm.maxDurationMs) || undefined,
-        }),
+        maxDurationMs: parseInt(dsaForm.maxDurationMs) || undefined,
+      }),
       testCases: testCases.map((tc) => ({
         input: tc.input.trim(),
         expectedOutput: tc.expectedOutput.trim(),
         isHidden: tc.isHidden,
       })),
+      inputFormat: dsaForm.inputFormat.trim() || undefined,
+      outputFormat: dsaForm.outputFormat.trim() || undefined,
+      constraints: dsaForm.constraints.map((c) => c.trim()).filter(Boolean),
+      boilerplate: {
+        cpp: dsaForm.boilerplate.cpp,
+        python: dsaForm.boilerplate.python,
+        java: dsaForm.boilerplate.java,
+        javascript: dsaForm.boilerplate.javascript,
+      },
     };
 
     // Validate using zod schema
@@ -442,7 +472,7 @@ const CreateQuestion = () => {
                         className={cn(
                           "flex items-center gap-3 p-2 rounded-lg transition-all relative",
                           optionDragIndex === index &&
-                            "bg-primary/10 border border-primary/30"
+                          "bg-primary/10 border border-primary/30"
                         )}
                       >
                         <div className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded">
@@ -746,6 +776,198 @@ const CreateQuestion = () => {
                     )}
                   </div>
                 </div>
+
+                {/* Input / Output Format */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <Label className="arena-label">Input Format</Label>
+                    <Textarea
+                      placeholder="e.g. First line: integer n. Second line: n space-separated integers."
+                      value={dsaForm.inputFormat}
+                      onChange={(e) => {
+                        setDsaForm({ ...dsaForm, inputFormat: e.target.value });
+                        if (dsaErrors.inputFormat) {
+                          setDsaErrors({ ...dsaErrors, inputFormat: "" });
+                        }
+                      }}
+                      disabled={isCreatingDsa}
+                      className={cn(
+                        "arena-input w-full min-h-[100px] resize-y font-mono text-sm",
+                        dsaErrors.inputFormat && "border-destructive"
+                      )}
+                    />
+                    {dsaErrors.inputFormat && (
+                      <p className="text-sm text-destructive mt-1">
+                        {dsaErrors.inputFormat}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <Label className="arena-label">Output Format</Label>
+                    <Textarea
+                      placeholder="e.g. Print one integer — the result."
+                      value={dsaForm.outputFormat}
+                      onChange={(e) => {
+                        setDsaForm({ ...dsaForm, outputFormat: e.target.value });
+                        if (dsaErrors.outputFormat) {
+                          setDsaErrors({ ...dsaErrors, outputFormat: "" });
+                        }
+                      }}
+                      disabled={isCreatingDsa}
+                      className={cn(
+                        "arena-input w-full min-h-[100px] resize-y font-mono text-sm",
+                        dsaErrors.outputFormat && "border-destructive"
+                      )}
+                    />
+                    {dsaErrors.outputFormat && (
+                      <p className="text-sm text-destructive mt-1">
+                        {dsaErrors.outputFormat}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Constraints */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <Label className="arena-label">Constraints</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={addConstraint}
+                      disabled={isCreatingDsa}
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add constraint
+                    </Button>
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    One constraint per line (e.g. 1 ≤ n ≤ 10^5)
+                  </p>
+                  <div className="space-y-2">
+                    {dsaForm.constraints.map((c, index) => (
+                      <div key={index} className="flex gap-2">
+                        <Input
+                          value={c}
+                          onChange={(e) =>
+                            updateConstraint(index, e.target.value)
+                          }
+                          placeholder={`Constraint ${index + 1}`}
+                          disabled={isCreatingDsa}
+                          className={cn(
+                            "arena-input flex-1 font-mono text-sm",
+                            dsaErrors[`constraints.${index}`] && "border-destructive"
+                          )}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeConstraint(index)}
+                          disabled={
+                            isCreatingDsa || dsaForm.constraints.length <= 1
+                          }
+                          className="shrink-0 text-muted-foreground hover:text-destructive"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  {dsaErrors.constraints && (
+                    <p className="text-sm text-destructive mt-1">
+                      {dsaErrors.constraints}
+                    </p>
+                  )}
+                </div>
+
+                {/* Boilerplate templates */}
+                <div>
+                  <Label className="arena-label flex items-center gap-2 mb-2">
+                    <FileCode className="w-4 h-4" />
+                    Boilerplate templates (per language)
+                  </Label>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Optional starter code for C++, Python, Java, and JavaScript.
+                  </p>
+                  <Tabs defaultValue="cpp" className="w-full">
+                    <TabsList className="bg-muted/50 w-full flex flex-wrap h-auto gap-1 p-1">
+                      <TabsTrigger value="cpp">C++</TabsTrigger>
+                      <TabsTrigger value="python">Python</TabsTrigger>
+                      <TabsTrigger value="java">Java</TabsTrigger>
+                      <TabsTrigger value="javascript">JavaScript</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="cpp" className="mt-2">
+                      <Textarea
+                        value={dsaForm.boilerplate.cpp}
+                        onChange={(e) =>
+                          setDsaForm({
+                            ...dsaForm,
+                            boilerplate: {
+                              ...dsaForm.boilerplate,
+                              cpp: e.target.value,
+                            },
+                          })
+                        }
+                        placeholder="#include <bits/stdc++.h>&#10;using namespace std;&#10;&#10;int main() { ... }"
+                        disabled={isCreatingDsa}
+                        className="arena-input w-full min-h-[160px] resize-y font-mono text-sm"
+                      />
+                    </TabsContent>
+                    <TabsContent value="python" className="mt-2">
+                      <Textarea
+                        value={dsaForm.boilerplate.python}
+                        onChange={(e) =>
+                          setDsaForm({
+                            ...dsaForm,
+                            boilerplate: {
+                              ...dsaForm.boilerplate,
+                              python: e.target.value,
+                            },
+                          })
+                        }
+                        placeholder="# Your code here&#10;def main():&#10;    pass&#10;&#10;if __name__ == &quot;__main__&quot;:&#10;    main()"
+                        disabled={isCreatingDsa}
+                        className="arena-input w-full min-h-[160px] resize-y font-mono text-sm"
+                      />
+                    </TabsContent>
+                    <TabsContent value="java" className="mt-2">
+                      <Textarea
+                        value={dsaForm.boilerplate.java}
+                        onChange={(e) =>
+                          setDsaForm({
+                            ...dsaForm,
+                            boilerplate: {
+                              ...dsaForm.boilerplate,
+                              java: e.target.value,
+                            },
+                          })
+                        }
+                        placeholder="import java.util.*;&#10;&#10;public class Solution {&#10;    public static void main(String[] args) { ... }&#10;}"
+                        disabled={isCreatingDsa}
+                        className="arena-input w-full min-h-[160px] resize-y font-mono text-sm"
+                      />
+                    </TabsContent>
+                    <TabsContent value="javascript" className="mt-2">
+                      <Textarea
+                        value={dsaForm.boilerplate.javascript}
+                        onChange={(e) =>
+                          setDsaForm({
+                            ...dsaForm,
+                            boilerplate: {
+                              ...dsaForm.boilerplate,
+                              javascript: e.target.value,
+                            },
+                          })
+                        }
+                        placeholder="const readline = require('readline');&#10;// Your code here"
+                        disabled={isCreatingDsa}
+                        className="arena-input w-full min-h-[160px] resize-y font-mono text-sm"
+                      />
+                    </TabsContent>
+                  </Tabs>
+                </div>
               </div>
 
               {/* Test Cases */}
@@ -831,7 +1053,7 @@ const CreateQuestion = () => {
                             className={cn(
                               "arena-input w-full font-mono text-sm h-24",
                               dsaErrors[`testCases.${index}.input`] &&
-                                "border-destructive"
+                              "border-destructive"
                             )}
                           />
                           {dsaErrors[`testCases.${index}.input`] && (
@@ -866,7 +1088,7 @@ const CreateQuestion = () => {
                             className={cn(
                               "arena-input w-full font-mono text-sm h-24",
                               dsaErrors[`testCases.${index}.expectedOutput`] &&
-                                "border-destructive"
+                              "border-destructive"
                             )}
                           />
                           {dsaErrors[`testCases.${index}.expectedOutput`] && (

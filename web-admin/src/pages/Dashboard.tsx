@@ -57,7 +57,7 @@ const Dashboard = () => {
 
   // Debounce search query
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  
+
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery);
@@ -67,7 +67,7 @@ const Dashboard = () => {
 
   // Fetch contests for current page with filters
   const { data: contestResponse, isLoading: isLoadingContests } = useContestsQuery(
-    currentPage, 
+    currentPage,
     ITEMS_PER_PAGE,
     debouncedSearch || undefined,
     filterStatus !== "all" ? filterStatus : undefined,
@@ -77,7 +77,7 @@ const Dashboard = () => {
   const contestsMeta = contestResponse?.meta;
   const totalItems = contestsMeta?.totalItems ?? 0;
   const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
-  
+
 
   // Fetch stats from API
   const { data: stats, isLoading: isLoadingStats } = useStatsQuery();
@@ -145,7 +145,7 @@ const Dashboard = () => {
                 <StatCardSkeleton key={index} index={index} />
               ))}
             </>
-          ) : (
+          ) : stats && (
             <>
               <StatCard
                 title="Total Contests"
@@ -193,7 +193,7 @@ const Dashboard = () => {
               filterStatus={filterStatus}
               onFilterChange={handleFilterChange}
               showButtonOnly={true}
-            /> 
+            />
           </div>
           {/* Filter controls appear below when expanded */}
           {isFiltersExpanded && (

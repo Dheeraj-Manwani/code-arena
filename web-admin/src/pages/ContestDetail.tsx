@@ -16,7 +16,7 @@ import { cn, getContestDuration } from "@/lib/utils";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { EditContestModal } from "@/components/contests/EditContestModal";
-import type { Contest, ContestStatus } from "@/schema/contest.schema";
+import type { ContestStatus, ContestWithQuestions } from "@/schema/contest.schema";
 import { useContestQuery } from "@/queries/contest.queries";
 import { motion } from "motion/react";
 import { pageVariants } from "@/lib/animations";
@@ -38,7 +38,7 @@ const ContestDetail = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   // Map API response to Contest type
-  const contest: Contest | undefined = useMemo(() => {
+  const contest: ContestWithQuestions | undefined = useMemo(() => {
     if (!contestData) return undefined;
 
     const apiContest = contestData;
@@ -54,8 +54,9 @@ const ContestDetail = () => {
       createdAt: apiContest.createdAt || new Date().toISOString(),
       updatedAt: apiContest.updatedAt || new Date().toISOString(),
       creatorId: apiContest.creatorId,
-      mcqs: apiContest.mcqs || [],
-      dsaProblems: apiContest.dsaProblems || [],
+      mcqCount: apiContest.mcqCount || 0,
+      dsaCount: apiContest.dsaCount || 0,
+      questions: apiContest.questions || [],
     };
   }, [contestData]);
 
@@ -63,14 +64,14 @@ const ContestDetail = () => {
   const mergedQuestions = useMemo(() => {
     if (!contestData?.questions) {
       // Fallback to old format if questions array doesn't exist
-      const mcqs = contest?.mcqs || [];
-      const dsaProblems = contest?.dsaProblems || [];
+      const mcqs = contest?.questions?.filter((q: any) => q.type === "mcq") || [];
+      const dsaProblems = contest?.questions?.filter((q: any) => q.type === "dsa") || [];
       const merged: Array<{
         type: "mcq" | "dsa";
         order: number;
         data: any;
       }> = [];
-      
+
       mcqs.forEach((mcq: any, index: number) => {
         merged.push({
           type: "mcq",
@@ -78,7 +79,7 @@ const ContestDetail = () => {
           data: mcq,
         });
       });
-      
+
       dsaProblems.forEach((dsa: any, index: number) => {
         merged.push({
           type: "dsa",
@@ -86,7 +87,7 @@ const ContestDetail = () => {
           data: dsa,
         });
       });
-      
+
       return merged.sort((a, b) => a.order - b.order);
     }
 
@@ -162,15 +163,11 @@ const ContestDetail = () => {
   const getStatusBadgeClass = (status: ContestStatus) => {
     switch (status) {
       case "draft":
-        return "bg-gray-500/20 text-gray-400 border-gray-500/30";
-      case "scheduled":
-        return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
-      case "running":
-        return "bg-green-500/20 text-green-400 border-green-500/30";
-      case "ended":
-        return "bg-muted text-muted-foreground border-border";
+        return "bg-amber-500/20 text-amber-400 border-amber-500/30";
+      case "published":
+        return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
       case "cancelled":
-        return "bg-red-500/20 text-red-400 border-red-500/30";
+        return "bg-destructive/20 text-destructive border-destructive/30";
       default:
         return "bg-muted text-muted-foreground border-border";
     }

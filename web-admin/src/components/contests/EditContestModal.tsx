@@ -27,7 +27,7 @@ import { StatusInfoModal } from "@/components/contests/StatusInfoModal";
 import { cn, convertHHmmToMilliseconds } from "@/lib/utils";
 import { useCreateMcqQuestionMutation, useCreateDsaProblemMutation } from "@/queries/problem.mutations";
 import { contestApi } from "@/api/contest";
-import type { AddMcqType, AddDsaType } from "@/schema/contest.schema";
+import type { AddDsaType, AddMcqType } from "@/schema/problem.schema";
 import { CreateQuestionDialog } from "./CreateQuestionDialog";
 import { ContestQuestionsList } from "./ContestQuestionsList";
 import type { ContestQuestion } from "./ContestQuestionItem";
@@ -417,273 +417,271 @@ export const EditContestModal = ({
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="space-y-6" noValidate>
-          <div>
-            <Label htmlFor="title" className="arena-label">
-              Contest Title
-            </Label>
-            <Input
-              id="title"
-              type="text"
-              placeholder="Weekly Coding Challenge"
-              value={formData.title}
+            <div>
+              <Label htmlFor="title" className="arena-label">
+                Contest Title
+              </Label>
+              <Input
+                id="title"
+                type="text"
+                placeholder="Weekly Coding Challenge"
+                value={formData.title}
                 onChange={(e) => {
                   setFormData({ ...formData, title: e.target.value });
                   if (errors.title) {
                     setErrors({ ...errors, title: "" });
                   }
                 }}
-              disabled={isUpdating}
+                disabled={isUpdating}
                 className={cn(
                   "arena-input w-full h-10",
                   errors.title && "border-destructive"
                 )}
-              required
-            />
+                required
+              />
               {errors.title && (
                 <p className="text-sm text-destructive mt-1">{errors.title}</p>
               )}
-          </div>
+            </div>
 
-          <div>
-            <Label htmlFor="description" className="arena-label">
-              Description
-            </Label>
-            <Textarea
-              id="description"
-              placeholder="Describe the contest, rules, and prizes..."
-              value={formData.description}
+            <div>
+              <Label htmlFor="description" className="arena-label">
+                Description
+              </Label>
+              <Textarea
+                id="description"
+                placeholder="Describe the contest, rules, and prizes..."
+                value={formData.description}
                 onChange={(e) => {
                   setFormData({ ...formData, description: e.target.value });
                   if (errors.description) {
                     setErrors({ ...errors, description: "" });
                   }
                 }}
-              disabled={isUpdating}
+                disabled={isUpdating}
                 className={cn(
                   "arena-input w-full min-h-[100px] max-h-[250px] overflow-y-auto",
                   errors.description && "border-destructive"
                 )}
-              required
-            />
+                required
+              />
               {errors.description && (
                 <p className="text-sm text-destructive mt-1">
                   {errors.description}
                 </p>
               )}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="flex flex-col gap-2">
-              <Label htmlFor="type" className="arena-label">
-                Contest Type
-              </Label>
-
-              <Select
-                value={formData.type}
-                onValueChange={(value) => {
-                  const newType = value as "practice" | "competitive";
-                  setFormData({
-                    ...formData,
-                    type: newType,
-                    ...(newType === "practice" && {
-                      startTime: "",
-                      endTime: "",
-                    }),
-                    ...(newType === "competitive" && {
-                      maxDurationTime: "",
-                    }),
-                  });
-                  // Clear related errors when switching types
-                  setErrors({});
-                }}
-                disabled={isUpdating}
-              >
-                <SelectTrigger id="type" className="w-full h-10 arena-input">
-                  <SelectValue placeholder="Select contest type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="competitive">Competitive</SelectItem>
-                  <SelectItem value="practice">Practice</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="type" className="arena-label">
+                  Contest Type
+                </Label>
+
+                <Select
+                  value={formData.type}
+                  onValueChange={(value) => {
+                    const newType = value as "practice" | "competitive";
+                    setFormData({
+                      ...formData,
+                      type: newType,
+                      ...(newType === "practice" && {
+                        startTime: "",
+                        endTime: "",
+                      }),
+                      ...(newType === "competitive" && {
+                        maxDurationTime: "",
+                      }),
+                    });
+                    // Clear related errors when switching types
+                    setErrors({});
+                  }}
+                  disabled={isUpdating}
+                >
+                  <SelectTrigger id="type" className="w-full h-10 arena-input">
+                    <SelectValue placeholder="Select contest type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="competitive">Competitive</SelectItem>
+                    <SelectItem value="practice">Practice</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-2">
-                <Label htmlFor="status" className="arena-label">
-                  Contest Status
-                </Label>
+                  <Label htmlFor="status" className="arena-label">
+                    Contest Status
+                  </Label>
 
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
                     className="h-5 w-5 p-0 group relative -translate-y-1"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setIsStatusInfoOpen(true);
-                  }}
-                  title="Click to learn about contest statuses"
-                >
-                  <Info className="w-4 h-4 text-blue-500 hover:text-blue-600 transition-all duration-300 group-hover:scale-125 group-hover:rotate-12 animate-pulse hover:animate-none" />
-                  <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
-                    Learn about statuses
-                  </span>
-                  <span className="absolute inset-0 rounded-full bg-blue-500/30 opacity-0 group-hover:opacity-100 group-hover:animate-ping transition-opacity duration-300" />
-                </Button>
-              </div>
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setIsStatusInfoOpen(true);
+                    }}
+                    title="Click to learn about contest statuses"
+                  >
+                    <Info className="w-4 h-4 text-blue-500 hover:text-blue-600 transition-all duration-300 group-hover:scale-125 group-hover:rotate-12 animate-pulse hover:animate-none" />
+                    <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
+                      Learn about statuses
+                    </span>
+                    <span className="absolute inset-0 rounded-full bg-blue-500/30 opacity-0 group-hover:opacity-100 group-hover:animate-ping transition-opacity duration-300" />
+                  </Button>
+                </div>
 
-              <Select
+                <Select
                   value={formData.status}
-                onValueChange={(value) =>
-                  setFormData({
-                    ...formData,
-                    status: value as ContestStatus,
-                  })
-                }
-                disabled={isUpdating}
-              >
-                <SelectTrigger id="status" className="w-full h-10 arena-input">
-                  <SelectValue placeholder="Select status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="draft">Draft</SelectItem>
-                  <SelectItem value="scheduled">Scheduled</SelectItem>
-                  <SelectItem value="running">Running</SelectItem>
-                  <SelectItem value="ended">Ended</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {formData.type === "competitive" && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <Label className="arena-label">
-                  Start Date & Time <span className="text-destructive">*</span>
-                </Label>
-                <DateTimePicker
-                  date={
-                    formData.startTime
-                      ? new Date(formData.startTime)
-                      : undefined
-                  }
-                    onDateChange={(date) => {
+                  onValueChange={(value) =>
                     setFormData({
                       ...formData,
-                      startTime: date?.toISOString() ?? "",
-                    });
+                      status: value as ContestStatus,
+                    })
+                  }
+                  disabled={isUpdating}
+                >
+                  <SelectTrigger id="status" className="w-full h-10 arena-input">
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="published">Published</SelectItem>
+                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {formData.type === "competitive" && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <Label className="arena-label">
+                    Start Date & Time <span className="text-destructive">*</span>
+                  </Label>
+                  <DateTimePicker
+                    date={
+                      formData.startTime
+                        ? new Date(formData.startTime)
+                        : undefined
+                    }
+                    onDateChange={(date) => {
+                      setFormData({
+                        ...formData,
+                        startTime: date?.toISOString() ?? "",
+                      });
                       if (errors.startTime) {
                         setErrors({ ...errors, startTime: "" });
                       }
                     }}
-                  placeholder="Select start date and time"
-                  disabled={isUpdating}
-                />
+                    placeholder="Select start date and time"
+                    disabled={isUpdating}
+                  />
                   {errors.startTime && (
                     <p className="text-sm text-destructive mt-1">
                       {errors.startTime}
                     </p>
                   )}
-              </div>
-              <div>
-                <Label className="arena-label">
-                  End Date & Time <span className="text-destructive">*</span>
-                </Label>
-                <DateTimePicker
-                  date={
-                    formData.endTime ? new Date(formData.endTime) : undefined
-                  }
+                </div>
+                <div>
+                  <Label className="arena-label">
+                    End Date & Time <span className="text-destructive">*</span>
+                  </Label>
+                  <DateTimePicker
+                    date={
+                      formData.endTime ? new Date(formData.endTime) : undefined
+                    }
                     onDateChange={(date) => {
-                    setFormData({
-                      ...formData,
-                      endTime: date?.toISOString() ?? "",
-                    });
+                      setFormData({
+                        ...formData,
+                        endTime: date?.toISOString() ?? "",
+                      });
                       if (errors.endTime) {
                         setErrors({ ...errors, endTime: "" });
                       }
                     }}
-                  placeholder="Select end date and time"
-                  disabled={isUpdating}
-                />
+                    placeholder="Select end date and time"
+                    disabled={isUpdating}
+                  />
                   {errors.endTime && (
                     <p className="text-sm text-destructive mt-1">
                       {errors.endTime}
                     </p>
                   )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
             {formData.type === "practice" && (
               <div>
                 <Label htmlFor="maxDurationTime" className="arena-label">
                   Max Duration (hh:mm) <span className="text-destructive">*</span>
                 </Label>
-            <div className="relative">
-              <Input
-                id="maxDurationTime"
-                type="text"
-                placeholder="HH:mm"
-                value={formData.maxDurationTime || ""}
-                onChange={(e) => {
-                  let value = e.target.value;
-                  // Allow only digits and colon
-                  value = value.replace(/[^\d:]/g, "");
-                  // Limit to HH:mm format
-                  if (value.length > 5) return;
-                  // Auto-format as user types
-                  if (value.length === 2 && !value.includes(":")) {
-                    value = value + ":";
-                  }
-                  setFormData({
-                    ...formData,
-                    maxDurationTime: value,
-                  });
-                  if (errors.maxDurationMs) {
-                    setErrors({ ...errors, maxDurationMs: "" });
-                  }
-                }}
-                onBlur={(e) => {
-                  // Validate and format on blur
-                  const value = e.target.value.trim();
-                  if (value && !/^\d{1,2}:\d{2}$/.test(value)) {
-                    toast.error("Please enter time in HH:mm format (e.g., 01:30)");
-                    setFormData({
-                      ...formData,
-                      maxDurationTime: "",
-                    });
-                    return;
-                  }
-                  // Format to ensure 2 digits for hours and minutes
-                  if (value) {
-                    const [hours, minutes] = value.split(":");
-                    const formattedHours = String(parseInt(hours || "0")).padStart(2, "0");
-                    const formattedMinutes = String(parseInt(minutes || "0")).padStart(2, "0");
-                    if (parseInt(formattedMinutes) >= 60) {
-                      toast.error("Minutes must be less than 60");
+                <div className="relative">
+                  <Input
+                    id="maxDurationTime"
+                    type="text"
+                    placeholder="HH:mm"
+                    value={formData.maxDurationTime || ""}
+                    onChange={(e) => {
+                      let value = e.target.value;
+                      // Allow only digits and colon
+                      value = value.replace(/[^\d:]/g, "");
+                      // Limit to HH:mm format
+                      if (value.length > 5) return;
+                      // Auto-format as user types
+                      if (value.length === 2 && !value.includes(":")) {
+                        value = value + ":";
+                      }
                       setFormData({
                         ...formData,
-                        maxDurationTime: "",
+                        maxDurationTime: value,
                       });
-                      return;
-                    }
-                    setFormData({
-                      ...formData,
-                      maxDurationTime: `${formattedHours}:${formattedMinutes}`,
-                    });
-                  }
-                }}
-                disabled={isUpdating}
+                      if (errors.maxDurationMs) {
+                        setErrors({ ...errors, maxDurationMs: "" });
+                      }
+                    }}
+                    onBlur={(e) => {
+                      // Validate and format on blur
+                      const value = e.target.value.trim();
+                      if (value && !/^\d{1,2}:\d{2}$/.test(value)) {
+                        toast.error("Please enter time in HH:mm format (e.g., 01:30)");
+                        setFormData({
+                          ...formData,
+                          maxDurationTime: "",
+                        });
+                        return;
+                      }
+                      // Format to ensure 2 digits for hours and minutes
+                      if (value) {
+                        const [hours, minutes] = value.split(":");
+                        const formattedHours = String(parseInt(hours || "0")).padStart(2, "0");
+                        const formattedMinutes = String(parseInt(minutes || "0")).padStart(2, "0");
+                        if (parseInt(formattedMinutes) >= 60) {
+                          toast.error("Minutes must be less than 60");
+                          setFormData({
+                            ...formData,
+                            maxDurationTime: "",
+                          });
+                          return;
+                        }
+                        setFormData({
+                          ...formData,
+                          maxDurationTime: `${formattedHours}:${formattedMinutes}`,
+                        });
+                      }
+                    }}
+                    disabled={isUpdating}
                     className={cn(
                       "arena-input w-full h-10 pl-10",
                       errors.maxDurationMs && "border-destructive"
                     )}
-                pattern="[0-9]{2}:[0-9]{2}"
-              />
-              <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-            </div>
+                    pattern="[0-9]{2}:[0-9]{2}"
+                  />
+                  <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                </div>
                 {errors.maxDurationMs && (
                   <p className="text-sm text-destructive mt-1">
                     {errors.maxDurationMs}
@@ -712,28 +710,28 @@ export const EditContestModal = ({
               disabled={isUpdating}
             />
 
-          <div className="flex items-center justify-end gap-3 pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              disabled={isUpdating}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isUpdating}>
-              {isUpdating ? "Updating..." : "Update Contest"}
-            </Button>
-          </div>
-        </form>
+            <div className="flex items-center justify-end gap-3 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
+                disabled={isUpdating}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isUpdating}>
+                {isUpdating ? "Updating..." : "Update Contest"}
+              </Button>
+            </div>
+          </form>
 
-        {/* Status Info Modal */}
-        <StatusInfoModal
-          isOpen={isStatusInfoOpen}
-          onClose={() => setIsStatusInfoOpen(false)}
-        />
-      </DialogContent>
-    </Dialog>
+          {/* Status Info Modal */}
+          <StatusInfoModal
+            isOpen={isStatusInfoOpen}
+            onClose={() => setIsStatusInfoOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

@@ -14,8 +14,7 @@ import { Plus, Trash2, GripVertical, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { McqQuestion } from "@/schema/problem.schema";
 import { useUpdateMcqQuestionMutation } from "@/queries/problem.mutations";
-import { UpdateMcqSchema } from "@/schema/contest.schema";
-import type { UpdateMcqType } from "@/schema/contest.schema";
+import { UpdateMcqSchema, type UpdateMcqType } from "@/schema/problem.schema";
 
 interface EditMcqModalProps {
   question: McqQuestion | null;
@@ -45,8 +44,8 @@ export const EditMcqModal = ({
       const options = Array.isArray(question.options)
         ? question.options
         : typeof question.options === "string"
-        ? JSON.parse(question.options)
-        : [];
+          ? JSON.parse(question.options)
+          : [];
 
       setFormData({
         questionText: question.questionText || "",
@@ -155,8 +154,8 @@ export const EditMcqModal = ({
       points: formData.points,
       ...(formData.maxDurationMs &&
         formData.maxDurationMs.trim() !== "" && {
-          maxDurationMs: parseInt(formData.maxDurationMs) * 60000 || undefined,
-        }),
+        maxDurationMs: parseInt(formData.maxDurationMs) * 60000 || undefined,
+      }),
     };
 
     // Validate using zod schema
@@ -313,7 +312,7 @@ export const EditMcqModal = ({
                   className={cn(
                     "flex items-center gap-3 p-2 rounded-lg transition-all relative",
                     optionDragIndex === index &&
-                      "bg-primary/10 border border-primary/30"
+                    "bg-primary/10 border border-primary/30"
                   )}
                 >
                   <div className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded">

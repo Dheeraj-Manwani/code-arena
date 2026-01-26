@@ -1,15 +1,9 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  InputOTP,
-  InputOTPGroup,
-  InputOTPSlot,
-} from "@/components/ui/input-otp";
-import { toast } from "react-hot-toast";
-import { ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Shield } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { pageVariants } from "@/lib/animations";
 import { useLoginMutation } from "@/queries/auth.mutations";
@@ -37,19 +31,25 @@ const Login = () => {
         exit="exit"
       >
         {/* Logo */}
-        <div className="text-center mb-4">
-          <div className="flex flex-col items-center gap-1 mb-2">
-            <img src="/logo.png" alt="Code Arena" className="h-12 w-auto" />
+        {/* Logo */}
+        <div className="text-center mb-6">
+          <div className="flex flex-col items-center gap-2 mb-4">
+            <div className="w-16 h-16 rounded-lg bg-primary/20 border-2 border-primary/30 flex items-center justify-center mb-2">
+              <Shield className="h-8 w-8 text-primary" />
+            </div>
             <h1 className="font-mono text-3xl font-bold">
               <span className="text-primary">Code</span>
               <span className="text-foreground">Arena</span>
             </h1>
           </div>
-          <p className="text-muted-foreground">Admin Portal</p>
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-foreground uppercase tracking-wider">Administrator Access</p>
+            <p className="text-xs text-muted-foreground">Secure login for authorized personnel only</p>
+          </div>
         </div>
 
         {/* Form */}
-        <div className="arena-card">
+        <div className="arena-card border-2 border-primary/20 bg-card/80 backdrop-blur-sm">
           <AnimatePresence mode="wait">
             <motion.div
               key="credentials"
@@ -58,9 +58,12 @@ const Login = () => {
               exit={{ opacity: 0, x: 20 }}
               transition={{ duration: 0.2 }}
             >
-              <h2 className="text-xl font-mono font-semibold text-foreground mb-6">
-                Welcome back
-              </h2>
+              <div className="mb-6 pb-4 border-b border-border">
+                <h2 className="text-xl font-mono font-semibold text-foreground mb-1">
+                  Administrator Login
+                </h2>
+                <p className="text-xs text-muted-foreground">Enter your credentials to access the admin dashboard</p>
+              </div>
 
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
@@ -71,12 +74,12 @@ const Login = () => {
                     id="email"
                     type="email"
                     placeholder="admin@codearena.dev"
+                    className="arena-input w-full bg-input/50 border-border/80 focus:border-primary/50"
                     value={formData.email}
                     onChange={(e) =>
                       setFormData({ ...formData, email: e.target.value })
                     }
                     disabled={isLoading}
-                    className="arena-input w-full"
                     required
                   />
                 </div>
@@ -95,7 +98,7 @@ const Login = () => {
                         setFormData({ ...formData, password: e.target.value })
                       }
                       disabled={isLoading}
-                      className="arena-input w-full pr-10"
+                      className="arena-input w-full pr-10 bg-input/50 border-border/80 focus:border-primary/50"
                       required
                     />
                     <button
@@ -125,8 +128,8 @@ const Login = () => {
                   </Link>
                 </div>
 
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? "Loggin In..." : "Log In"}
+                <Button type="submit" className="w-full font-semibold" disabled={isLoading}>
+                  {isLoading ? "Authenticating..." : "Access Admin Dashboard"}
                 </Button>
               </form>
 
