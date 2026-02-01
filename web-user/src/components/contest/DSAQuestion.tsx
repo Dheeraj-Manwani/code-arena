@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import Editor from "@monaco-editor/react";
 import type { TestCaseUI, ContestDsa } from "@/schema/problem.schema";
 import { Button } from "@/components/ui/button";
-import { Play, Send, Loader2, FileText, Terminal, AlertTriangle, Zap, BookOpen, Award, Clock, Database, Tag } from "lucide-react";
+import { Play, Send, Loader2, FileText, Terminal, AlertTriangle, Zap, BookOpen, Award, Clock, Database, Tag, Copy, Check } from "lucide-react";
 import { Allotment } from "allotment";
 import TestCasePanel from "./TestCasePanel";
 import {
@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { TestCaseResult } from "@/schema/problem.schema";
 
 interface CodingQuestionProps {
@@ -20,7 +21,7 @@ interface CodingQuestionProps {
   code: string;
   language: string;
   onCodeChange: (code: string) => void;
-  onLanguageChange: (language: string) => void;
+  onLanguageChange: (language: string, boilerplate?: string) => void;
   onSubmit: () => void;
 }
 
@@ -43,6 +44,7 @@ const DSAQuestion = ({
   const [testResults, setTestResults] = useState<TestCaseResult[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const handleAddCustomTestCase = (testCase: TestCaseUI) => {
     setCustomTestCases((prev) => [...prev, testCase]);
@@ -54,8 +56,7 @@ const DSAQuestion = ({
   };
 
   const handleLanguageChange = (newLang: string) => {
-    onLanguageChange(newLang);
-    onCodeChange((question.boilerplate?.[newLang] as string) || "");
+    onLanguageChange(newLang, question.boilerplate?.[newLang]);
   };
 
   const simulateRun = useCallback(async () => {
@@ -86,6 +87,16 @@ const DSAQuestion = ({
     onSubmit();
   };
 
+  const handleCopy = async (text: string, fieldId: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(fieldId);
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
+  };
+
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty) {
       case "Easy":
@@ -97,10 +108,6 @@ const DSAQuestion = ({
       default:
         return "text-muted-foreground bg-muted border-border";
     }
-  };
-
-  const handleAllotmentChange = (sizes: number[]) => {
-    console.log(sizes);
   };
 
   return (
@@ -126,10 +133,10 @@ const DSAQuestion = ({
                       {question.difficulty}
                     </span>
                   )}
-                  <span className="px-2.5 py-1 text-xs font-medium bg-primary/10 text-primary rounded-md border border-primary/20">
+                  {/* <span className="px-2.5 py-1 text-xs font-medium bg-primary/10 text-primary rounded-md border border-primary/20">
                     <Zap className="inline-block h-3 w-3 mr-1" />
                     Coding
-                  </span>
+                  </span> */}
                   {(question.tags ?? []).length > 0 && (
                     <>
                       <Tag className="h-3.5 w-3.5 text-muted-foreground" />
@@ -145,7 +152,7 @@ const DSAQuestion = ({
                     </>
                   )}
                 </div>
-                <h2 className="font-mono text-xl font-bold text-foreground">{question.title}</h2>
+                <h2 className="font-mono text-2xl font-bold text-foreground mb-3" style={{ fontSize: '24px', fontWeight: 700 }}>{question.title}</h2>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm text-muted-foreground">
                   <span className="inline-flex items-center gap-1.5">
                     <Award className="h-4 w-4 text-amber-500/80" />
@@ -164,9 +171,11 @@ const DSAQuestion = ({
 
               <div className="flex-1 p-6 space-y-6">
                 <section className="rounded-xl border border-border bg-card/30 overflow-hidden">
-                  <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-primary/10 to-transparent border-b border-border">
+                  <div className="flex items-center gap-2 px-4 py-3 bg-linear-to-r from-primary/10 to-transparent border-b border-border">
                     <BookOpen className="h-4 w-4 text-primary" />
-                    <h3 className="font-mono text-sm font-semibold text-primary">Problem Statement</h3>
+                    <h3 className="font-mono text-sm font-semibold text-primary">
+                      Problem Statement
+                    </h3>
                   </div>
                   <div className="p-4">
                     <p className="text-foreground/90 leading-relaxed whitespace-pre-line text-sm">
@@ -176,41 +185,47 @@ const DSAQuestion = ({
                 </section>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <section className="rounded-xl border border-border bg-card/30 overflow-hidden">
-                    <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-arena-success/10 to-transparent border-b border-border">
-                      <FileText className="h-4 w-4 text-arena-success" />
-                      <h3 className="font-mono text-sm font-semibold text-arena-success">Input Format</h3>
+                  {question.inputFormat && <section className="rounded-xl border border-border bg-card/30 overflow-hidden">
+                    <div className="flex items-center gap-2 px-4 py-3 bg-muted/30 border-b border-border">
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                      <h3 className="font-mono text-sm font-semibold text-foreground">
+                        Input Format
+                      </h3>
                     </div>
                     <div className="p-4">
                       <pre className="font-mono text-sm text-foreground/80 whitespace-pre-wrap leading-relaxed">
                         {question.inputFormat ?? "Read input from standard input."}
                       </pre>
                     </div>
-                  </section>
+                  </section>}
 
-                  <section className="rounded-xl border border-border bg-card/30 overflow-hidden">
-                    <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-blue-500/10 to-transparent border-b border-border">
-                      <Terminal className="h-4 w-4 text-blue-400" />
-                      <h3 className="font-mono text-sm font-semibold text-blue-400">Output Format</h3>
+                  {question.outputFormat && <section className="rounded-xl border border-border bg-card/30 overflow-hidden">
+                    <div className="flex items-center gap-2 px-4 py-3 bg-muted/30 border-b border-border">
+                      <Terminal className="h-4 w-4 text-muted-foreground" />
+                      <h3 className="font-mono text-sm font-semibold text-foreground">
+                        Output Format
+                      </h3>
                     </div>
                     <div className="p-4">
                       <pre className="font-mono text-sm text-foreground/80 whitespace-pre-wrap leading-relaxed">
                         {question.outputFormat ?? "Output your result to standard output."}
                       </pre>
                     </div>
-                  </section>
+                  </section>}
                 </div>
 
-                <section className="rounded-xl border border-arena-warning/20 bg-arena-warning/5 overflow-hidden">
-                  <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-arena-warning/15 to-transparent border-b border-arena-warning/20">
-                    <AlertTriangle className="h-4 w-4 text-arena-warning" />
-                    <h3 className="font-mono text-sm font-semibold text-arena-warning">Constraints</h3>
+                {question.constraints.length > 0 && <section className="rounded-xl border border-border bg-card/30 overflow-hidden">
+                  <div className="flex items-center gap-2 px-4 py-3 bg-muted/30 border-b border-border">
+                    <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+                    <h3 className="font-mono text-sm font-semibold text-foreground">
+                      Constraints
+                    </h3>
                   </div>
                   <div className="p-4">
                     <ul className="space-y-2">
-                      {(question.constraints ?? []).map((constraint: string, index: number) => (
+                      {question.constraints.map((constraint: string, index: number) => (
                         <li key={index} className="flex items-start gap-3 text-sm">
-                          <span className="flex items-center justify-center h-5 w-5 rounded-full bg-arena-warning/20 text-arena-warning text-xs font-bold shrink-0">
+                          <span className="flex items-center justify-center h-5 w-5 rounded-full bg-muted text-muted-foreground text-xs font-bold shrink-0">
                             {index + 1}
                           </span>
                           <code className="font-mono text-foreground/90 leading-relaxed">{constraint}</code>
@@ -218,40 +233,88 @@ const DSAQuestion = ({
                       ))}
                     </ul>
                   </div>
-                </section>
+                </section>}
 
                 <section className="rounded-xl border border-border bg-card/30 overflow-hidden">
-                  <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-500/10 to-transparent border-b border-border">
-                    <Zap className="h-4 w-4 text-purple-400" />
-                    <h3 className="font-mono text-sm font-semibold text-purple-400">Examples</h3>
+                  <div className="flex items-center gap-2 px-4 py-3 bg-muted/30 border-b border-border">
+                    <Zap className="h-4 w-4" />
+                    <h3 className="font-mono text-sm font-semibold text-foreground">
+                      Examples
+                    </h3>
                   </div>
                   <div className="p-4 space-y-4">
-                    {question.testCases?.slice(0, 2).map((tc: TestCaseUI, index: number) => (
-                      <div
-                        key={tc.id}
-                        className="rounded-lg bg-background/50 border border-border overflow-hidden"
-                      >
-                        <div className="px-3 py-2 bg-muted/30 border-b border-border">
-                          <span className="font-mono text-xs font-semibold text-muted-foreground">
-                            Example {index + 1}
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-2 divide-x divide-border">
-                          <div className="p-3">
-                            <span className="text-xs font-medium text-arena-success block mb-2">Input</span>
-                            <pre className="font-mono text-sm text-foreground bg-muted/30 rounded-md p-2 overflow-x-auto">
-                              {tc.input}
-                            </pre>
+                    {question.testCases?.slice(0, 2).map((tc: TestCaseUI, index: number) => {
+                      const inputFieldId = `example-${tc.id}-input`;
+                      const outputFieldId = `example-${tc.id}-output`;
+                      return (
+                        <div
+                          key={tc.id}
+                          className="rounded-lg bg-background/50 border border-border overflow-hidden"
+                        >
+                          <div className="px-4 py-2.5 bg-muted/30 border-b border-border">
+                            <span className="font-mono text-xs font-semibold text-muted-foreground">
+                              Example {index + 1}
+                            </span>
                           </div>
-                          <div className="p-3">
-                            <span className="text-xs font-medium text-blue-400 block mb-2">Output</span>
-                            <pre className="font-mono text-sm text-foreground bg-muted/30 rounded-md p-2 overflow-x-auto">
-                              {tc.expectedOutput}
-                            </pre>
+                          <div className="grid grid-cols-2 divide-x divide-border">
+                            <div className="p-4">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs font-medium text-muted-foreground">
+                                  Input
+                                </span>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      onClick={() => handleCopy(tc.input, inputFieldId)}
+                                      className="p-1.5 rounded-md hover:bg-muted/50 transition-colors text-muted-foreground hover:text-foreground"
+                                    >
+                                      {copiedField === inputFieldId ? (
+                                        <Check className="h-3.5 w-3.5 text-arena-success" />
+                                      ) : (
+                                        <Copy className="h-3.5 w-3.5" />
+                                      )}
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {copiedField === inputFieldId ? "Copied!" : "Copy input"}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </div>
+                              <pre className="font-mono text-sm text-foreground bg-muted/30 rounded-md p-3 overflow-x-auto">
+                                {tc.input}
+                              </pre>
+                            </div>
+                            <div className="p-4">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs font-medium text-muted-foreground">
+                                  Output
+                                </span>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      onClick={() => handleCopy(tc.expectedOutput, outputFieldId)}
+                                      className="p-1.5 rounded-md hover:bg-muted/50 transition-colors text-muted-foreground hover:text-foreground"
+                                    >
+                                      {copiedField === outputFieldId ? (
+                                        <Check className="h-3.5 w-3.5 text-arena-success" />
+                                      ) : (
+                                        <Copy className="h-3.5 w-3.5" />
+                                      )}
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {copiedField === outputFieldId ? "Copied!" : "Copy output"}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </div>
+                              <pre className="font-mono text-sm text-foreground bg-muted/30 rounded-md p-3 overflow-x-auto">
+                                {tc.expectedOutput}
+                              </pre>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </section>
               </div>
@@ -268,8 +331,6 @@ const DSAQuestion = ({
               minSize={80}
               proportionalLayout
               className="h-full"
-              onChange={handleAllotmentChange}
-
             >
               {/* Editor Pane */}
               <Allotment.Pane minSize={150} preferredSize="70%">

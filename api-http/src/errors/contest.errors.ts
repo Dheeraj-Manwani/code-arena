@@ -17,3 +17,9 @@ export class ForbiddenError extends AppError {
     super("Forbidden", 403, "FORBIDDEN");
   }
 }
+
+export class AttemptLimitReachedError extends AppError {
+  constructor() {
+    super("Attempt limit reached", 400, "ATTEMPT_LIMIT_REACHED");
+  }
+}

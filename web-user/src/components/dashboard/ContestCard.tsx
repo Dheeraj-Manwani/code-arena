@@ -66,9 +66,6 @@ const ContestCard = ({ contest, className, hasAttempt = false, ctaSize = "defaul
       minute: "2-digit",
     });
 
-  const handleCardClick = () => {
-    navigate(`/contest/${contest.id}/details`);
-  };
 
   const handleViewDetails = () => {
     navigate(`/contest/${contest.id}/details`);
@@ -249,7 +246,7 @@ const ContestCard = ({ contest, className, hasAttempt = false, ctaSize = "defaul
         isLive && "border-l-2 border-l-emerald-500/50",
         className
       )}
-      onClick={handleCardClick}
+      onClick={handleViewDetails}
     >
       <CardHeader className="space-y-3 pb-2">
         {header}

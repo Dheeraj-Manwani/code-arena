@@ -1,4 +1,4 @@
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, ScrollRestoration } from "react-router-dom";
 import { useAuthStore } from "@/stores/auth.store";
 
 export function AuthRoute() {
@@ -8,5 +8,10 @@ export function AuthRoute() {
     return <Navigate to="/dashboard" replace />;
   }
 
-  return <Outlet />;
+  return (
+    <>
+      <ScrollRestoration />
+      <Outlet />
+    </>
+  );
 }

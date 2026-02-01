@@ -1,9 +1,9 @@
 import { ContestStatus, ContestType, Prisma } from "@prisma/client";
 import prisma from "../lib/db";
 
-export const checkIfContestExists = async (contestId: number) => {
+export const checkIfContestExists = async (contestId: number, status?: ContestStatus) => {
   const contest = await prisma.contest.findUnique({
-    where: { id: contestId },
+    where: { id: contestId, ...(status && { status }) },
     select: { id: true },
   });
 
@@ -318,31 +318,4 @@ export const getDashboardFeedData = async () => {
   ]);
 
   return { competitive, practice };
-};
-
-export const getOrCreateContestAttempt = async (
-  userId: number,
-  contestId: number,
-) => {
-  // Try to find an existing in-progress attempt
-  const existingAttempt = await prisma.contestAttempt.findFirst({
-    where: {
-      userId,
-      contestId,
-      status: "in_progress",
-    },
-  });
-
-  if (existingAttempt) {
-    return existingAttempt;
-  }
-
-  // Create a new attempt
-  return await prisma.contestAttempt.create({
-    data: {
-      userId,
-      contestId,
-      status: "in_progress",
-    },
-  });
 };

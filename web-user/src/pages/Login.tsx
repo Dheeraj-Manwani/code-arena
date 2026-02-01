@@ -47,7 +47,7 @@ const Login = () => {
         </div>
 
         {/* Form */}
-        <div className="arena-card border border-border/50 bg-gradient-to-br from-card to-card/50">
+        <div className="arena-card border border-border/50 bg-linear-to-br from-card to-card/50">
           <AnimatePresence mode="wait">
             <motion.div
               key="credentials"

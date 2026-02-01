@@ -1,34 +1,68 @@
-import { useState, useEffect, useMemo } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { Skeleton } from "@/components/ui/skeleton";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useParams, useNavigate, Navigate, useBlocker, useBeforeUnload } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Send } from "lucide-react";
 import { toast } from "react-hot-toast";
 import ContestHeader from "./ContestHeader";
 import MCQQuestion from "./MCQQuestion";
 import DSAQuestion from "./DSAQuestion";
 import ResultsPage from "./ResultsPage";
-import { useContestQuery } from "@/queries/contest.queries";
-import { useSubmitMcqMutation, useSubmitDsaMutation } from "@/queries/submission.mutations";
+import { useContestAttemptQuery } from "@/queries/contest.queries";
+import { useSaveMcqDraftMutation, useSaveDsaDraftMutation } from "@/queries/submission.mutations";
+import { useContestAttemptStore } from "@/stores/contestAttempt.store";
 import type { Contest } from "@/schema/contest.schema";
 import type { ContestDsa, ContestMcq, ContestQuestion } from "@/schema/problem.schema";
+import { ContestSubmitDialog } from "../common/ContestSubmitDialog";
+import ContestNavigationFooter from "./ContestNavigationFooter";
+import { Loader } from "../Loader";
 
+const LEAVE_MESSAGE =
+  "Are you sure you want to leave? Your progress may be lost.";
 
 const ContestPage = () => {
-  const { id } = useParams();
+  const { contestId: conId, attemptId: attId } = useParams();
+  const contestId = conId ? Number(conId) : undefined;
+  const attemptId = attId ? Number(attId) : undefined;
+
+  if (!contestId || !attemptId) {
+    return <Navigate to="/contests" replace />;
+  }
+
   const navigate = useNavigate();
-  const contestId = id ? parseInt(id) : undefined;
+  const allowNavigationRef = useRef(false);
+  const {
+    mcqAnswers,
+    dsaAnswers,
+    submittedQuestionIds,
+    setActiveContest,
+    setMcqAnswer,
+    setDsaAnswer,
+    markSubmitted,
+    hasSubmitted,
+    reset,
+  } = useContestAttemptStore();
 
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<number, number | null>>({});
-  const [codeState, setCodeState] = useState<Record<string, { code: string; language: string }>>({});
   const [isContestComplete, setIsContestComplete] = useState(false);
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [startTime] = useState(Date.now());
-  const [submittedQuestions, setSubmittedQuestions] = useState<Set<number>>(new Set());
 
-  const { data: contestData, isLoading } = useContestQuery(contestId, true);
-  const submitMcqMutation = useSubmitMcqMutation();
-  const submitDsaMutation = useSubmitDsaMutation();
+  const { data: contestAttemptData, isLoading, isError } = useContestAttemptQuery(contestId, attemptId);
+  const saveMcqDraftMutation = useSaveMcqDraftMutation();
+  const saveDsaDraftMutation = useSaveDsaDraftMutation();
+
+  const contestData = contestAttemptData?.contest;
+
+  // Use attempt's startedAt/deadlineAt for timer; fallback to contest duration for display
+  const attemptStartedAtMs = contestAttemptData?.startedAt
+    ? new Date(contestAttemptData.startedAt).getTime()
+    : null;
+  const attemptDeadlineAtMs = contestAttemptData?.deadlineAt
+    ? new Date(contestAttemptData.deadlineAt).getTime()
+    : null;
+  const durationMinutesFromAttempt =
+    attemptStartedAtMs != null && attemptDeadlineAtMs != null
+      ? Math.max(0, (attemptDeadlineAtMs - attemptStartedAtMs) / (60 * 1000))
+      : null;
 
   const contestQuestions: ContestQuestion[] = useMemo(() => {
     if (!contestData) return [];
@@ -58,113 +92,201 @@ const ContestPage = () => {
     return questions;
   }, [contestData]);
 
+  // Hydrate store from server draft answers once per attempt (on load/refresh)
+  const hasHydratedDrafts = useRef(false);
+  useEffect(() => {
+    if (!contestAttemptData || hasHydratedDrafts.current || contestQuestions.length === 0) return;
+    hasHydratedDrafts.current = true;
+    const drafts = contestAttemptData.draftAnswers ?? [];
+
+    contestQuestions.forEach((q) => {
+      if (q.type !== "dsa") return;
+      if (!dsaAnswers[q.id]) {
+        const codingQ = q;
+        const draftAns = drafts.find((d) => d.problemId === q.id);
+        if (draftAns) {
+          setDsaAnswer(draftAns.problemId, {
+            code: draftAns.code ?? "",
+            language: draftAns.language ?? "cpp",
+          });
+        } else {
+          const bp = codingQ.boilerplate;
+          const code = (bp?.cpp ?? bp?.python ?? "") || "";
+          setDsaAnswer(q.id, { code, language: "cpp" });
+        }
+      }
+    });
+
+    for (const draft of drafts) {
+      if (draft.mcqOption != null) {
+        setMcqAnswer(draft.problemId, draft.mcqOption);
+      }
+    }
+  }, [contestAttemptData, setMcqAnswer, setDsaAnswer, contestQuestions]);
+
   const contestInfo = useMemo(() => {
     if (!contestData) return null;
 
-    const durationMs = contestData.maxDurationMs ||
-      (contestData.endTime && contestData.startTime
-        ? new Date(contestData.endTime).getTime() - new Date(contestData.startTime).getTime()
-        : 90 * 60 * 1000); // Default 90 minutes
+    const durationMinutes =
+      durationMinutesFromAttempt ??
+      (contestData.maxDurationMs
+        ? Math.floor(contestData.maxDurationMs / (60 * 1000))
+        : contestData.endTime && contestData.startTime
+          ? Math.floor(
+            (new Date(contestData.endTime).getTime() - new Date(contestData.startTime).getTime()) /
+            (60 * 1000)
+          )
+          : 90);
+
+    const startTimeForTimer =
+      attemptStartedAtMs ?? (startTime as number);
 
     return {
       title: contestData.title,
-      duration: Math.floor(durationMs / (60 * 1000)), // Convert to minutes
+      duration: Math.floor(durationMinutes),
       totalQuestions: contestQuestions.length,
+      startTime: startTimeForTimer,
     };
-  }, [contestData, contestQuestions.length]);
+  }, [
+    contestData,
+    contestQuestions.length,
+    durationMinutesFromAttempt,
+    attemptStartedAtMs,
+    startTime,
+  ]);
 
   const currentQuestion = contestQuestions[currentQuestionIndex];
   const isLastQuestion = currentQuestionIndex === contestQuestions.length - 1;
 
-  // Initialize code state for coding questions
-  useEffect(() => {
-    contestQuestions.forEach((q) => {
-      if (q.type === "dsa" && !codeState[q.id]) {
-        const codingQ = q as ContestDsa;
-        setCodeState((prev) => ({
-          ...prev,
-          [q.id]: {
-            code: codingQ.boilerplate["cpp"] || "",
-            language: "cpp",
-          },
-        }));
-      }
-    });
-  }, [contestQuestions]);
+  const goToQuestion = (index: number) => {
+    const i = Math.max(0, Math.min(index, contestQuestions.length - 1));
+    setCurrentQuestionIndex(i);
+  };
 
-  // Redirect if contest not found
+  const isAttempted = (q: ContestQuestion) => {
+    if (q.type === "mcq") return mcqAnswers[q.id] != null;
+    return hasSubmitted(q.id);
+  };
+
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      !allowNavigationRef.current &&
+      !isContestComplete &&
+      currentLocation.pathname !== nextLocation.pathname
+  );
+
+  const handleBeforeUnload = useCallback(
+    (e: BeforeUnloadEvent) => {
+      if (!isContestComplete) {
+        e.preventDefault();
+        e.returnValue = LEAVE_MESSAGE;
+        return LEAVE_MESSAGE;
+      }
+    },
+    [isContestComplete]
+  );
+  useBeforeUnload(handleBeforeUnload, { capture: true });
+
   useEffect(() => {
-    if (!isLoading && !contestData && contestId) {
+    if (blocker.state !== "blocked") return;
+    const ok = window.confirm(LEAVE_MESSAGE);
+    ok ? blocker.proceed() : blocker.reset();
+  }, [blocker.state]);
+
+
+  useEffect(() => {
+    setActiveContest(contestId, attemptId);
+    hasHydratedDrafts.current = false;
+  }, [contestId, attemptId, setActiveContest]);
+
+  useEffect(() => {
+    if (isError) {
+      toast.error("Attempt not found");
+      allowNavigationRef.current = true;
+      navigate(`/contest/${contestId}/details`);
+    }
+  }, [isError, contestId, navigate]);
+
+  useEffect(() => {
+    if (!isLoading && !contestData && !isError) {
       toast.error("Contest not found");
+      allowNavigationRef.current = true;
       navigate("/dashboard");
     }
-  }, [isLoading, contestData, contestId, navigate]);
+  }, [isLoading, contestData, contestId, isError, navigate]);
+
+  // Redirect if attempt is already submitted / ended
+  useEffect(() => {
+    if (isLoading || !contestAttemptData || contestAttemptData.status === "in_progress") return;
+    allowNavigationRef.current = true;
+    navigate(`/results/${contestAttemptData.id}`, { replace: true });
+  }, [isLoading, contestAttemptData?.id, contestAttemptData?.status, navigate]);
 
   const handleMCQAnswer = (answerId: number) => {
-    setAnswers((prev) => ({
-      ...prev,
-      [currentQuestion.id]: answerId,
-    }));
+    setMcqAnswer(currentQuestion.id, answerId);
+    saveMcqDraftMutation.mutate({
+      contestId,
+      attemptId,
+      questionId: currentQuestion.id,
+      data: { selectedOptionIndex: answerId },
+    });
   };
 
   const handleCodeChange = (code: string) => {
-    setCodeState((prev) => ({
-      ...prev,
-      [currentQuestion.id]: {
-        ...prev[currentQuestion.id],
-        code,
-      },
-    }));
+    const current = dsaAnswers[currentQuestion.id];
+    setDsaAnswer(currentQuestion.id, {
+      code,
+      language: current?.language ?? "cpp",
+    });
   };
 
-  const handleLanguageChange = (language: string) => {
-    setCodeState((prev) => ({
-      ...prev,
-      [currentQuestion.id]: {
-        ...prev[currentQuestion.id],
-        language,
-      },
-    }));
+  const handleLanguageChange = (language: string, boilerplate?: string) => {
+    const current = dsaAnswers[currentQuestion.id];
+    setDsaAnswer(currentQuestion.id, {
+      code: boilerplate ?? current?.code ?? "",
+      language,
+    });
   };
 
   const handleCodingSubmit = async () => {
-    const code = codeState[currentQuestion.id]?.code || "";
-    const language = codeState[currentQuestion.id]?.language || "cpp";
-
-
-
-    // Submit DSA solution
-    if (!submittedQuestions.has(currentQuestion.id) && contestId) {
+    if (!hasSubmitted(currentQuestion.id)) {
+      const answer = dsaAnswers[currentQuestion.id];
+      const code = answer?.code ?? "";
+      const language = answer?.language ?? "cpp";
+      if (!code.trim()) {
+        toast.error("Cannot submit empty solution");
+        return;
+      }
       try {
-        await submitDsaMutation.mutateAsync({
+        await saveDsaDraftMutation.mutateAsync({
+          contestId,
+          attemptId,
           problemId: currentQuestion.id,
           data: { code, language },
         });
-        setSubmittedQuestions((prev) => new Set(prev).add(currentQuestion.id));
+        markSubmitted(currentQuestion.id);
         toast.success("Solution submitted!");
-      } catch (error) {
+      } catch {
         toast.error("Failed to submit solution");
       }
     }
   };
 
   const handleNext = async () => {
-    // Submit MCQ answer if current question is MCQ and not yet submitted
-    if (currentQuestion.type === "mcq" && !submittedQuestions.has(currentQuestion.id) && contestId) {
-      const selectedAnswer = answers[currentQuestion.id];
-      if (selectedAnswer) {
-        const optionIndex = selectedAnswer;
+    if (currentQuestion.type === "mcq" && !hasSubmitted(currentQuestion.id)) {
+      const selectedAnswer = mcqAnswers[currentQuestion.id];
+      if (selectedAnswer != null) {
         try {
-          await submitMcqMutation.mutateAsync({
-            contestId,
-            questionId: currentQuestion.id,
-            data: { selectedOptionIndex: optionIndex },
-          });
-          setSubmittedQuestions((prev) => new Set(prev).add(currentQuestion.id));
+          // await submitMcqMutation.mutateAsync({
+          //   contestId,
+          //   questionId: currentQuestion.id,
+          //   data: { selectedOptionIndex: selectedAnswer },
+          // });
+          // markSubmitted(currentQuestion.id);
           toast.success("Answer submitted!");
         } catch (error) {
           toast.error("Failed to submit answer");
-          return; // Don't proceed to next question if submission fails
+          return;
         }
       }
     }
@@ -177,32 +299,20 @@ const ContestPage = () => {
   };
 
   const handleSubmitContest = () => {
+    setShowSubmitConfirm(false);
     setIsContestComplete(true);
   };
 
   const handleRestart = () => {
+    reset();
+    allowNavigationRef.current = true;
     navigate("/dashboard");
   };
 
-  const canProceed = () => {
-    if (currentQuestion.type === "mcq") {
-      return !!answers[currentQuestion.id];
-    }
-    // For coding questions, allow proceeding after submitting
-    return !!answers[currentQuestion.id];
-  };
+
 
   if (isLoading || !contestData || !contestInfo) {
-    return (
-      <div className="h-screen flex flex-col overflow-hidden">
-        <div className="flex-1 flex items-center justify-center">
-          <div className="space-y-4">
-            <Skeleton className="h-12 w-64" />
-            <Skeleton className="h-96 w-full max-w-4xl" />
-          </div>
-        </div>
-      </div>
-    );
+    return <Loader message="Loading contest" />
   }
 
   if (contestQuestions.length === 0) {
@@ -212,7 +322,14 @@ const ContestPage = () => {
           <div className="text-center">
             <h2 className="text-2xl font-bold text-foreground mb-2">No Questions Available</h2>
             <p className="text-muted-foreground mb-4">This contest doesn't have any questions yet.</p>
-            <Button onClick={() => navigate("/dashboard")}>Back to Dashboard</Button>
+            <Button
+              onClick={() => {
+                allowNavigationRef.current = true;
+                navigate("/dashboard");
+              }}
+            >
+              Back to Dashboard
+            </Button>
           </div>
         </div>
       </div>
@@ -223,7 +340,7 @@ const ContestPage = () => {
     return (
       <ResultsPage
         questions={contestQuestions}
-        answers={answers}
+        answers={mcqAnswers}
         onRestart={handleRestart}
       />
     );
@@ -233,10 +350,10 @@ const ContestPage = () => {
     <div className="h-screen flex flex-col overflow-hidden">
       <ContestHeader
         title={contestInfo.title}
-        currentQuestion={currentQuestionIndex + 1}
+        submittedCount={submittedQuestionIds.length}
         totalQuestions={contestInfo.totalQuestions}
         duration={contestInfo.duration}
-        startTime={startTime}
+        startTime={contestInfo.startTime}
       />
 
       <main className="flex-1 min-h-0 overflow-hidden">
@@ -244,15 +361,15 @@ const ContestPage = () => {
           <MCQQuestion
             key={currentQuestion.id}
             question={currentQuestion}
-            selectedAnswer={answers[currentQuestion.id] || null}
+            selectedAnswer={mcqAnswers[currentQuestion.id] ?? null}
             onSelectAnswer={handleMCQAnswer}
           />
         ) : (
           <DSAQuestion
             key={currentQuestion.id}
             question={currentQuestion}
-            code={codeState[currentQuestion.id]?.code || ""}
-            language={codeState[currentQuestion.id]?.language || "cpp"}
+            code={dsaAnswers[currentQuestion.id]?.code ?? ""}
+            language={dsaAnswers[currentQuestion.id]?.language ?? "cpp"}
             onCodeChange={handleCodeChange}
             onLanguageChange={handleLanguageChange}
             onSubmit={handleCodingSubmit}
@@ -260,50 +377,22 @@ const ContestPage = () => {
         )}
       </main>
 
-      {/* Navigation Footer */}
-      <footer className="bg-card border-t border-border px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {contestQuestions.map((_, index) => (
-              <button
-                key={index}
-                className={`w-8 h-8 rounded-full font-mono text-sm font-medium transition-all ${index === currentQuestionIndex
-                  ? "bg-primary text-primary-foreground arena-glow"
-                  : index < currentQuestionIndex
-                    ? "bg-arena-success/20 text-arena-success"
-                    : "bg-secondary text-muted-foreground"
-                  }`}
-                disabled
-              >
-                {index + 1}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex items-center gap-3">
-            {isLastQuestion ? (
-              <Button
-                onClick={handleSubmitContest}
-                size="lg"
-                className="arena-glow"
-              >
-                <Send className="h-5 w-5 mr-2" />
-                Submit Contest
-              </Button>
-            ) : (
-              <Button
-                onClick={handleNext}
-                disabled={!canProceed()}
-                size="lg"
-                className={canProceed() ? "arena-glow" : ""}
-              >
-                Next Question
-                <ArrowRight className="h-5 w-5 ml-2" />
-              </Button>
-            )}
-          </div>
-        </div>
-      </footer>
+      <ContestNavigationFooter
+        contestQuestions={contestQuestions}
+        currentQuestionIndex={currentQuestionIndex}
+        goToQuestion={goToQuestion}
+        isAttempted={isAttempted}
+        isLastQuestion={isLastQuestion}
+        onShowSubmitConfirm={() => setShowSubmitConfirm(true)}
+        onNext={handleNext}
+      />
+      <ContestSubmitDialog
+        isOpen={showSubmitConfirm}
+        onOpenChange={setShowSubmitConfirm}
+        submittedQuestions={submittedQuestionIds.length}
+        contestQuestions={contestQuestions.length}
+        handleSubmit={handleSubmitContest}
+      />
     </div>
   );
 };

@@ -131,12 +131,12 @@ const Signup = () => {
               <span className="text-foreground">Arena</span>
             </h1>
           </div>
-          <p className="text-lg text-foreground font-medium">Join CodeArena today!</p>
+          <p className="text-lg text-foreground font-medium">Join Code Arena today!</p>
           <p className="text-sm text-muted-foreground mt-1">Create your account to start coding</p>
         </div>
 
         {/* Form */}
-        <div className="arena-card border border-border/50 bg-gradient-to-br from-card to-card/50">
+        <div className="arena-card border border-border/50 bg-linear-to-br from-card to-card/50">
           <AnimatePresence mode="wait">
             {step === "registration" ? (
               <motion.div

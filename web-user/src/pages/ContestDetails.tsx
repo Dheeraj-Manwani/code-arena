@@ -1,29 +1,36 @@
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Navigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import AppBreadcrumb from '@/components/common/AppBreadcrumb';
 import StatusBadge from '@/components/common/StatusBadge';
 import CountdownTimer from '@/components/common/CountdownTimer';
 import { useContestQuery } from '@/queries/contest.queries';
 import {
   Clock, Calendar, Trophy, FileQuestion, Code,
-  CheckCircle2, AlertCircle, Play, ArrowRight, Lock
+  CheckCircle2, Play, ArrowRight, Lock
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import type { Difficulty } from '@/schema/problem.schema';
 import { Loader } from '@/components/Loader';
+import EnterContestDialog from '@/components/common/EnterContestDialog';
+import type { ContestWithQuestions } from '@/schema/contest.schema';
+import { useContestAttempt } from '@/queries/contest.mutations';
 
 const ContestDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
-  const [isStarting, setIsStarting] = useState(false);
 
   const contestId = id ? parseInt(id) : undefined;
+
+  if (!contestId) {
+    return <Navigate to="/contests" replace />;
+  }
+
   const { data: contestData, isLoading } = useContestQuery(contestId, true);
+  const { mutate: createAttempt, isPending: isStarting } = useContestAttempt()
 
   if (isLoading) {
     return (
@@ -44,35 +51,12 @@ const ContestDetails = () => {
   }
 
   // Map API contest data to UI format (API may include optional questions, mcqs, dsaProblems)
-  const c = contestData as typeof contestData & { questions?: unknown[]; mcqs?: unknown[]; dsaProblems?: unknown[] };
-  const questions: Array<{ id: string; title: string; type: 'mcq' | 'coding'; points: number; difficulty?: string }> = [];
-
-  if (c.mcqs?.length) {
-    (c.mcqs as any[]).forEach((mcq: any) => {
-      questions.push({
-        id: String(mcq.id),
-        title: mcq.questionText || 'MCQ Question',
-        type: 'mcq',
-        points: mcq.points || 0,
-      });
-    });
-  }
-
-  if (c.dsaProblems?.length) {
-    (c.dsaProblems as any[]).forEach((dsa: any) => {
-      questions.push({
-        id: String(dsa.id),
-        title: dsa.title || 'DSA Problem',
-        type: 'coding',
-        points: dsa.points || 0,
-        difficulty: dsa.difficulty,
-      });
-    });
-  }
+  const c = contestData as ContestWithQuestions
+  const questions: Array<{ id: string; title: string; type: 'mcq' | 'dsa'; points: number; difficulty?: string | null }> = [];
 
   // Sort questions by order if available (API returns questions as { id, order, type, mcq?, dsa? })
   if (Array.isArray(c.questions) && c.questions.length > 0) {
-    type Q = { id: string; title: string; type: 'mcq' | 'coding'; points: number; difficulty?: string };
+    type Q = { id: string; title: string; type: 'mcq' | 'dsa'; points: number; difficulty?: string };
     const orderedQuestions = (c.questions as any[])
       .sort((a: any, b: any) => (a.order || 0) - (b.order || 0))
       .map((q: any): Q | null => {
@@ -87,7 +71,7 @@ const ContestDetails = () => {
           return {
             id: String(q.dsa.id),
             title: q.dsa.title || 'DSA Problem',
-            type: 'coding' as const,
+            type: 'dsa' as const,
             points: q.dsa.points || 0,
             difficulty: q.dsa.difficulty,
           };
@@ -101,22 +85,17 @@ const ContestDetails = () => {
     }
   }
 
-  // Questions not revealed: no questions array but API provides mcqCount/dsaCount
   const apiMcqCount = contestData.mcqCount ?? 0;
   const apiDsaCount = contestData.dsaCount ?? 0;
   const questionsNotRevealed =
     questions.length === 0 && (apiMcqCount > 0 || apiDsaCount > 0);
 
-  const startTime = contestData.startTime
-    ? (typeof contestData.startTime === 'string' ? new Date(contestData.startTime) : contestData.startTime)
-    : new Date();
-  const endTime = contestData.endTime
-    ? (typeof contestData.endTime === 'string' ? new Date(contestData.endTime) : contestData.endTime)
-    : new Date();
+  const startTime = contestData.startTime ? new Date(contestData.startTime) : new Date()
+  const endTime = contestData.endTime ? new Date(contestData.endTime) : new Date();
 
   const totalPoints = questions.reduce((sum, q) => sum + q.points, 0);
   const mcqCount = questionsNotRevealed ? apiMcqCount : questions.filter(q => q.type === 'mcq').length;
-  const codingCount = questionsNotRevealed ? apiDsaCount : questions.filter(q => q.type === 'coding').length;
+  const codingCount = questionsNotRevealed ? apiDsaCount : questions.filter(q => q.type === 'dsa').length;
   const totalQuestionCount = questionsNotRevealed ? apiMcqCount + apiDsaCount : questions.length;
 
   const formatDuration = (ms: number) => {
@@ -139,13 +118,16 @@ const ContestDetails = () => {
     });
   };
 
-  const handleStartContest = () => {
-    setIsStarting(true);
-    // Navigate to contest page - the attempt will be created when first submission is made
-    setTimeout(() => {
-      toast.success('Contest started! Good luck!');
-      navigate(`/contest/${contestId}`);
-    }, 500);
+  const handleStartContest = async () => {
+    createAttempt(contestId, {
+      onSuccess: (data) => {
+        if (data.success) {
+          navigate(`/contest/${contestId}/attempt/${data.data.attemptId}`)
+          toast.success('Contest started! Good luck!')
+        }
+      }, onError: () => toast.error('Failed to start contest')
+    })
+
   };
 
   const canStart = contestData.phase === 'running';
@@ -276,7 +258,7 @@ const ContestDetails = () => {
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Action Card */}
-            <Card className={canStart ? 'border-primary/50 bg-gradient-to-br from-primary/5 to-transparent' : ''}>
+            <Card className={canStart ? 'border-primary/50 bg-linear-to-br from-primary/5 to-transparent' : ''}>
               <CardContent className="">
                 {canStart && isCompetitive && (
                   <div className="mb-6">
@@ -421,36 +403,16 @@ const ContestDetails = () => {
         </div>
       </main>
 
-      {/* Confirmation Dialog */}
-      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-        <DialogContent className="bg-card border-border">
-          <DialogHeader>
-            <DialogTitle>Start Contest?</DialogTitle>
-            <DialogDescription>
-              You are about to start "{contestData.title}".
-              {contestData.maxDurationMs && (
-                <> You will have {formatDuration(contestData.maxDurationMs)} to complete all questions.</>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4">
-              <p className="text-sm text-amber-400 flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                Once you start, the timer will begin. Make sure you're ready!
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowConfirmDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleStartContest} disabled={isStarting}>
-              {isStarting ? 'Starting...' : 'Start Now'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <EnterContestDialog
+        open={showConfirmDialog}
+        onOpenChange={() => setShowConfirmDialog(false)}
+        title={contestData.title}
+        dsaCount={contestData.dsaCount}
+        mcqCount={contestData.mcqCount}
+        maxDurationMs={contestData.maxDurationMs}
+        isStarting={isStarting}
+        onConfirm={handleStartContest}
+      />
     </div>
   );
 };

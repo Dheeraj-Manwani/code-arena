@@ -7,6 +7,7 @@ import type {
   ContestType,
   ContestWithQuestions,
 } from "@/schema/contest.schema";
+import type { ContestAttempt } from "@/schema/submission.schema";
 
 export const useContestsQuery = (
   page: number,
@@ -49,6 +50,24 @@ export const useContestQuery = (
       return data;
     },
     enabled: !!contestId,
+    retry: false,
+    staleTime: 0,
+  });
+};
+
+export const useContestAttemptQuery = (
+  contestId: number | undefined,
+  attemptId: number | undefined,
+) => {
+  return useQuery({
+    queryKey: ["contest-attempt", contestId, attemptId],
+    queryFn: async (): Promise<ContestAttempt> => {
+      if (contestId == null || attemptId == null)
+        throw new Error("Contest ID and attempt ID are required");
+      const { data } = await contestApi.getContestAttemptById(contestId, attemptId);
+      return data;
+    },
+    enabled: Boolean(contestId) && Boolean(attemptId),
     retry: false,
     staleTime: 0,
   });

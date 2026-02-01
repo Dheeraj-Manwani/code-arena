@@ -121,12 +121,12 @@ const TestCasePanel = ({
                   key={tc.id}
                   onClick={() => setActiveTab(tc.id)}
                   className={cn(
-                    "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-all duration-200 shrink-0 mt-0.5 ml-0.5",
+                    "flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-mono transition-all duration-200 shrink-0 mt-0.5 ml-0.5 border",
                     isActive
-                      ? "bg-secondary text-foreground ring-1 ring-border"
-                      : "text-muted-foreground hover:text-foreground hover:bg-secondary/50",
-                    result?.passed && "ring-arena-success/40",
-                    result && !result.passed && "ring-destructive/40"
+                      ? "bg-primary/10 text-foreground border-primary/30 font-semibold shadow-sm"
+                      : "text-muted-foreground hover:text-foreground hover:bg-secondary/50 border-transparent font-medium",
+                    result?.passed && isActive && "border-arena-success/50 bg-arena-success/5",
+                    result && !result.passed && isActive && "border-destructive/50 bg-destructive/5"
                   )}
                 >
                   {result && (
@@ -319,7 +319,7 @@ const TestCasePanel = ({
                 </div>
               </div>
 
-              <DialogFooter className="gap-2 sm:gap-0">
+              <DialogFooter className="gap-2">
                 <Button
                   variant="outline"
                   onClick={() => handleCloseAddModal(false)}

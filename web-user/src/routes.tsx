@@ -56,7 +56,7 @@ export const router = createBrowserRouter([
         element: <ContestDetails />,
       },
       {
-        path: "/contest/:id",
+        path: "/contest/:contestId/attempt/:attemptId",
         element: <ContestPage />,
       },
       {

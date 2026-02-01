@@ -1,5 +1,5 @@
 import { useAuthStore } from "@/stores/auth.store";
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, ScrollRestoration } from "react-router-dom";
 import AccessDenied from "@/pages/AccessDenied";
 
 export function ProtectedRoute() {
@@ -14,5 +14,10 @@ export function ProtectedRoute() {
     return <AccessDenied />;
   }
 
-  return <Outlet />;
+  return (
+    <>
+      <ScrollRestoration />
+      <Outlet />
+    </>
+  );
 }

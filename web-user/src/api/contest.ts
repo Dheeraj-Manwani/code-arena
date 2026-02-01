@@ -4,6 +4,7 @@ import type {
   ContestResponse,
   ContestType,
 } from "@/schema/contest.schema";
+import type { ContestAttempt } from "@/schema/submission.schema";
 
 export const contestApi = {
   getAllContests: async (
@@ -39,4 +40,14 @@ export const contestApi = {
     );
     return res.data;
   },
+
+  requestAttempt: async (contestId: number): Promise<{ success: boolean, data: { attemptId: number } }> => {
+    const res = await api.post(`/api/contests/${contestId}/attempt`);
+    return res.data;
+  },
+
+getContestAttemptById: async (contestId: number, attemptId: number): Promise<{ success: boolean; data: ContestAttempt }> => {
+    const res = await api.get(`/api/contests/${contestId}/attempt/${attemptId}`);
+    return res.data;
+  }
 };

@@ -1,5 +1,5 @@
 import { useAuthStore } from "@/stores/auth.store";
-import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { Navigate, Outlet, ScrollRestoration, useLocation } from "react-router-dom";
 import { AppNavbar, getNavbarLinks, isContestAttemptRoute } from "@/components/common/AppNavbar";
 
 export function ProtectedRoute() {
@@ -14,6 +14,7 @@ export function ProtectedRoute() {
   return (
     <>
       {!hideNavbar && <AppNavbar links={getNavbarLinks(pathname)} />}
+      <ScrollRestoration />
       <Outlet />
     </>
   );

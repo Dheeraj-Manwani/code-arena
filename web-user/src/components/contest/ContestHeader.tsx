@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 
 interface ContestHeaderProps {
   title: string;
-  currentQuestion: number;
+  submittedCount: number;
   totalQuestions: number;
   duration: number; // in minutes
   startTime: number;
@@ -11,7 +11,7 @@ interface ContestHeaderProps {
 
 const ContestHeader = ({
   title,
-  currentQuestion,
+  submittedCount,
   totalQuestions,
   duration,
   startTime,
@@ -37,7 +37,7 @@ const ContestHeader = ({
       .padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const progress = ((currentQuestion) / totalQuestions) * 100;
+  const progress = totalQuestions > 0 ? (submittedCount / totalQuestions) * 100 : 0;
   const isLowTime = timeRemaining < 300; // Less than 5 minutes
 
   return (
@@ -62,7 +62,7 @@ const ContestHeader = ({
                 />
               </div>
               <span className="font-mono text-sm">
-                {currentQuestion}/{totalQuestions}
+                {submittedCount}/{totalQuestions}
               </span>
             </div>
           </div>

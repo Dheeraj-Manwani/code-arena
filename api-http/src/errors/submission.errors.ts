@@ -1,6 +1,12 @@
 import { AppError } from "./app-error";
 import { ContestNotActiveError, ForbiddenError } from "./contest.errors";
 
+export class AttemptNotFoundError extends AppError {
+  constructor() {
+    super("Attempt not found", 404, "ATTEMPT_NOT_FOUND");
+  }
+}
+
 export class QuestionNotFoundError extends AppError {
   constructor() {
     super("Question not found", 404, "QUESTION_NOT_FOUND");

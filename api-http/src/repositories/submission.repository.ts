@@ -89,3 +89,39 @@ export const getDsaSubmissionsByContest = async (contestId: number) => {
     },
   });
 };
+
+export const getDraftAnswersByAttemptId = async (attemptId: number) => {
+  return await prisma.draftAnswer.findMany({
+    where: { attemptId },
+    orderBy: { id: "asc" },
+  });
+};
+
+export const upsertDraftAnswer = async (data: {
+  attemptId: number;
+  problemId: number;
+  mcqOption?: number;
+  code?: string;
+  language?: string;
+}) => {
+  return await prisma.draftAnswer.upsert({
+    where: {
+      attemptId_problemId: {
+        attemptId: data.attemptId,
+        problemId: data.problemId,
+      },
+    },
+    create: {
+      attemptId: data.attemptId,
+      problemId: data.problemId,
+      mcqOption: data.mcqOption ?? null,
+      code: data.code ?? null,
+      language: data.language ?? null,
+    },
+    update: {
+      ...(data.mcqOption !== undefined && { mcqOption: data.mcqOption }),
+      ...(data.code !== undefined && { code: data.code }),
+      ...(data.language !== undefined && { language: data.language }),
+    },
+  });
+};

@@ -103,6 +103,8 @@ model ContestAttempt {
   contestId Int
 
   startedAt   DateTime      @default(now())
+  deadlineAt  DateTime
+
   submittedAt DateTime?
   durationMs  Int?
   totalPoints Int           @default(0)
@@ -181,6 +183,8 @@ model ContestQuestion {
   dsa     DsaProblem?  @relation(fields: [dsaId], references: [id])
 
   @@index([contestId])
+  @@unique([contestId, mcqId])
+  @@unique([contestId, dsaId])
 }
 
 model TestCase {
@@ -218,6 +222,7 @@ model McqSubmission {
   @@index([contestId])
   @@index([attemptId])
   @@map("mcq_submissions")
+  @@unique([attemptId, questionId])
 }
 
 model DsaSubmission {
@@ -245,6 +250,7 @@ model DsaSubmission {
   @@index([contestId])
   @@index([attemptId])
   @@map("dsa_submissions")
+  @@unique([attemptId, problemId])
 }
 
 model ContestLeaderboard {
@@ -270,4 +276,18 @@ model EmailOtp {
 
   @@index([email, used])
   @@index([expiresAt])
+}
+
+model DraftAnswer {
+  id        Int @id @default(autoincrement())
+  attemptId Int
+  problemId Int
+
+  code      String?
+  language  String?
+  mcqOption Int?
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([attemptId, problemId])
 }

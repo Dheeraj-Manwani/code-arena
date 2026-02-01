@@ -18,6 +18,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Ban,
+  Loader2,
 } from "lucide-react";
 
 export interface EnterContestDialogProps {
@@ -27,6 +28,7 @@ export interface EnterContestDialogProps {
   title: string;
   mcqCount: number;
   dsaCount: number;
+  isStarting: boolean;
   maxDurationMs: number | null;
 }
 
@@ -44,6 +46,7 @@ const EnterContestDialog = ({
   title,
   mcqCount,
   dsaCount,
+  isStarting,
   maxDurationMs,
 }: EnterContestDialogProps) => {
   const [trailPaused, setTrailPaused] = useState(false);
@@ -122,9 +125,8 @@ const EnterContestDialog = ({
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button onClick={onConfirm} className="gap-2">
-              Start Contest
-              <ArrowRight className="h-4 w-4" />
+            <Button onClick={onConfirm} className="gap-2" disabled={isStarting}>
+              {isStarting ? <><Loader2 className="h-4 w-4 animate-spin" /> Starting...</> : "Start Contest"}
             </Button>
           </DialogFooter>
         </div>

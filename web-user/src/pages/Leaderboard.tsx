@@ -75,11 +75,11 @@ const Leaderboard = () => {
   const getRankStyles = (rank: number) => {
     switch (rank) {
       case 1:
-        return 'bg-gradient-to-r from-yellow-500/20 to-transparent border-yellow-500/30';
+        return 'bg-linear-to-r from-yellow-500/20 to-transparent border-yellow-500/30';
       case 2:
-        return 'bg-gradient-to-r from-gray-400/20 to-transparent border-gray-400/30';
+        return 'bg-linear-to-r from-gray-400/20 to-transparent border-gray-400/30';
       case 3:
-        return 'bg-gradient-to-r from-amber-600/20 to-transparent border-amber-600/30';
+        return 'bg-linear-to-r from-amber-600/20 to-transparent border-amber-600/30';
       default:
         return '';
     }
@@ -126,7 +126,7 @@ const Leaderboard = () => {
 
         {/* Current User Rank Card */}
         {currentUserEntry && !isLoading && entries.length > 0 && (
-          <Card className="mb-6 border-primary/50 bg-gradient-to-br from-primary/10 to-transparent">
+          <Card className="mb-6 border-primary/50 bg-linear-to-br from-primary/10 to-transparent">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
