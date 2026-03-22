@@ -5,12 +5,12 @@ import type { ContestQuestion } from "@/schema/problem.schema";
 
 interface ResultsPageProps {
   questions: ContestQuestion[];
-  answers: Record<number, number | null>;
+  submittedQuestionIds: number[];
   onRestart: () => void;
 }
 
-const ResultsPage = ({ questions, answers, onRestart }: ResultsPageProps) => {
-  const answeredQuestions = questions.filter((q) => answers[q.id]);
+const ResultsPage = ({ questions, submittedQuestionIds, onRestart }: ResultsPageProps) => {
+  const answeredQuestions = questions.filter((q) => submittedQuestionIds.includes(q.id));
   const score = answeredQuestions.length;
   const total = questions.length;
   const percentage = Math.round((score / total) * 100);
@@ -70,7 +70,7 @@ const ResultsPage = ({ questions, answers, onRestart }: ResultsPageProps) => {
           <h2 className="font-mono text-lg font-semibold mb-4">Question Summary</h2>
           <div className="space-y-3">
             {questions.map((q: ContestQuestion, index: number) => {
-              const isAnswered = !!answers[q.id];
+              const isAnswered = submittedQuestionIds.includes(q.id);
               const isCoding = q.type === "dsa";
 
               return (

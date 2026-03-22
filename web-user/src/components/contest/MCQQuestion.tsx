@@ -1,17 +1,29 @@
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Loader2, Send } from "lucide-react";
 import type { ContestMcq } from "@/schema/problem.schema";
 
 interface MCQQuestionProps {
   question: ContestMcq;
   selectedAnswer: number | null;
   onSelectAnswer: (answerId: number) => void;
+  onSubmit: () => void;
+  hasSubmitted: boolean;
+  isSubmitting?: boolean;
+  isLastQuestion?: boolean;
 }
 
 const MCQQuestion = ({
   question,
   selectedAnswer,
   onSelectAnswer,
+  onSubmit,
+  hasSubmitted,
+  isSubmitting = false,
+  isLastQuestion = false,
 }: MCQQuestionProps) => {
+  const canSubmit = selectedAnswer != null && !hasSubmitted;
+
   return (
     <div className="h-full flex flex-col p-8">
       <div className="flex-1 max-w-3xl mx-auto w-full">
@@ -34,6 +46,7 @@ const MCQQuestion = ({
               <button
                 key={optionLabel}
                 onClick={() => onSelectAnswer(index)}
+                disabled={hasSubmitted}
                 className={cn(
                   "w-full flex items-center gap-4 p-4 rounded-lg border transition-all duration-200 text-left",
                   isSelected
@@ -59,6 +72,24 @@ const MCQQuestion = ({
             );
           })}
         </div>
+
+        {canSubmit && (
+          <div className="mt-8 flex justify-end">
+            <Button
+              onClick={onSubmit}
+              size="lg"
+              className="arena-glow gap-2"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Send className="h-5 w-5" />
+              )}
+              {isLastQuestion ? "Submit Answer and Finish Contest" : "Submit Answer"}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

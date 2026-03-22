@@ -1,5 +1,4 @@
 import * as submissionRepo from "../repositories/submission.repository";
-import * as problemRepo from "../repositories/problem.repository";
 import * as contestRepo from "../repositories/contest.repository";
 import * as attemptRepo from "../repositories/attempt.repository";
 import {
@@ -7,6 +6,7 @@ import {
   QuestionNotFoundError,
   ContestNotActiveError,
   ForbiddenError,
+  AlreadySubmittedError,
 } from "../errors/submission.errors";
 import { ProblemNotFoundError } from "../errors/problem.errors";
 import {
@@ -14,6 +14,7 @@ import {
   SubmitDsaSchemaType,
   ContestAttempt,
 } from "../schema/submission.schema";
+import { LanguageEnum } from "../schema/language.schema";
 import { executeCode } from "../util/codeExecutor";
 import { Contest, ContestType, Role } from "@prisma/client";
 import { AttemptLimitReachedError, ContestNotFoundError } from "../errors/contest.errors";
@@ -57,7 +58,12 @@ export const createAttempt = async (contestId: number, userId: number) => {
   return attempt.id;
 }
 
-export const getContestAttempt = async (contestId: number, attemptId: number, role: Role, userId: number): Promise<ContestAttempt> => {
+export const getContestAttempt = async (
+  contestId: number,
+  attemptId: number,
+  role: Role,
+  userId: number,
+): Promise<ContestAttempt> => {
   const contest = await contestRepo.getContestByIdWithProblems(contestId, true);
 
   if (!contest || contest.status !== 'published') {
@@ -74,71 +80,98 @@ export const getContestAttempt = async (contestId: number, attemptId: number, ro
 
   const contestUI = mapDBContestToContest(contest, true, role);
 
+  const attemptWithCurrent = attempt as typeof attempt & { currentProblemId?: number | null };
+  const currentProblemId = attemptWithCurrent.currentProblemId ?? undefined;
+
   return {
     id: attempt.id,
     contestId: attempt.contestId,
     status: attempt.status,
     startedAt: attempt.startedAt.toISOString(),
     deadlineAt: attempt.deadlineAt.toISOString(),
-    draftAnswers: draftAnswers.map((draftAnswer) => ({
-      ...draftAnswer,
-      code: draftAnswer.code ?? undefined,
-      language: draftAnswer.language ?? undefined,
-      mcqOption: draftAnswer.mcqOption ?? undefined,
-    })),
+    currentProblemId,
+    draftAnswers: draftAnswers.map((draftAnswer) => {
+      const parsedLang =
+        draftAnswer.language != null
+          ? LanguageEnum.safeParse(draftAnswer.language)
+          : { success: false as const };
+      return {
+        ...draftAnswer,
+        code: draftAnswer.code ?? undefined,
+        language: parsedLang.success ? parsedLang.data : undefined,
+        mcqOption: draftAnswer.mcqOption ?? undefined,
+      };
+    }),
     contest: contestUI as ContestWithQuestions
   };
 }
 
 export const submitMcq = async (
   contestId: number,
-  questionId: number,
+  attemptId: number,
+  contestQuestionId: number,
   userId: number,
   input: SubmitMcqSchemaType
 ) => {
   const { selectedOptionIndex } = input;
 
-  const question = await problemRepo.getMcqQuestion(questionId, contestId);
-
+  const attempt = await attemptRepo.getContestAttemptById(attemptId);
   if (
-    !question ||
-    !question.contestLinks ||
-    question.contestLinks.length === 0
+    !attempt ||
+    attempt.contestId !== contestId ||
+    attempt.userId !== userId ||
+    attempt.status !== "in_progress"
   ) {
-    throw new QuestionNotFoundError();
+    throw new AttemptNotFoundError();
   }
 
-  const contest = question.contestLinks[0].contest;
+  const contestQuestion = await contestRepo.getContestQuestionWithMcq(
+    contestQuestionId,
+    contestId
+  );
+  if (!contestQuestion?.mcq) {
+    throw new QuestionNotFoundError();
+  }
+  const { mcq: question } = contestQuestion;
+  const mcqId = question.id;
+  const contest = contestQuestion.contest;
 
   if (!isContestActive(contest)) {
     throw new ContestNotActiveError();
   }
 
-  const existingSubmission = await submissionRepo.getMcqSubmission(
-    userId,
-    questionId,
-    contestId
+  const existingSubmission = await submissionRepo.getMcqSubmissionByAttempt(
+    attemptId,
+    mcqId
   );
 
-  // if (existingSubmission) {
-  //   throw new AlreadySubmittedError();
-  // }
-
-  // Get or create contest attempt
-  const attempt = { id: 123 };
+  if (existingSubmission) {
+    throw new AlreadySubmittedError();
+  }
 
   const isCorrect = selectedOptionIndex === question.correctOptionIndex;
   const pointsEarned = isCorrect ? question.points : 0;
 
   await submissionRepo.createMcqSubmission({
     userId,
-    questionId,
+    questionId: mcqId,
     contestId,
     attemptId: attempt.id,
     selectedOptionIndex,
     isCorrect,
     pointsEarned,
   });
+
+  const nextContestQuestionId = await contestRepo.getNextContestQuestionIdAfter(
+    contestId,
+    contestQuestionId
+  );
+  await attemptRepo.updateCurrentProblemId(
+    attempt.id,
+    userId,
+    contestId,
+    nextContestQuestionId
+  );
 
   return {
     isCorrect,
@@ -147,30 +180,47 @@ export const submitMcq = async (
 };
 
 export const submitDsa = async (
-  problemId: number,
+  contestId: number,
+  attemptId: number,
+  contestQuestionId: number,
   userId: number,
   input: SubmitDsaSchemaType
 ) => {
   const { code, language } = input;
 
-  const problem = await problemRepo.getDsaProblemWithAllTestCases(problemId);
-
-  if (!problem || !problem.contestLinks || problem.contestLinks.length === 0) {
-    throw new ProblemNotFoundError();
+  const attempt = await attemptRepo.getContestAttemptById(attemptId);
+  if (
+    !attempt ||
+    attempt.contestId !== contestId ||
+    attempt.userId !== userId ||
+    attempt.status !== "in_progress"
+  ) {
+    throw new AttemptNotFoundError();
   }
 
-  const contest = problem.contestLinks[0].contest;
-  const contestId = contest.id;
+  const contestQuestion = await contestRepo.getContestQuestionWithDsa(
+    contestQuestionId,
+    contestId
+  );
+  if (!contestQuestion?.dsa) {
+    throw new ProblemNotFoundError();
+  }
+  const problem = contestQuestion.dsa;
+  const dsaId = problem.id;
+  const contest = contestQuestion.contest;
 
   if (!isContestActive(contest)) {
     throw new ContestNotActiveError();
   }
 
-  if (contest.creatorId === userId) {
-    throw new ForbiddenError();
-  }
+  const existingSubmission = await submissionRepo.getDsaSubmissionByAttempt(
+    attemptId,
+    dsaId
+  );
 
-  const attempt = { id: 123 };
+  if (existingSubmission) {
+    throw new AlreadySubmittedError();
+  }
 
   const executionResult = await executeCode(
     code,
@@ -179,7 +229,9 @@ export const submitDsa = async (
       input: tc.input,
       expectedOutput: tc.expectedOutput,
     })),
-    problem.timeLimit
+    problem.timeLimit,
+    problem.memoryLimit,
+    problem.points
   );
 
   const pointsEarned = Math.floor(
@@ -189,7 +241,7 @@ export const submitDsa = async (
 
   await submissionRepo.createDsaSubmission({
     userId,
-    problemId,
+    problemId: dsaId,
     contestId,
     attemptId: attempt.id,
     code,
@@ -199,6 +251,17 @@ export const submitDsa = async (
     testCasesPassed: executionResult.testCasesPassed,
     totalTestCases: executionResult.totalTestCases,
   });
+
+  const nextContestQuestionId = await contestRepo.getNextContestQuestionIdAfter(
+    contestId,
+    contestQuestionId
+  );
+  await attemptRepo.updateCurrentProblemId(
+    attempt.id,
+    userId,
+    contestId,
+    nextContestQuestionId
+  );
 
   return {
     status: executionResult.status,
@@ -211,7 +274,7 @@ export const submitDsa = async (
 export const saveMcqDraft = async (
   contestId: number,
   attemptId: number,
-  questionId: number,
+  contestQuestionId: number,
   mcqOption: number,
   userId: number
 ) => {
@@ -219,9 +282,16 @@ export const saveMcqDraft = async (
   if (!attempt || attempt.userId !== userId || attempt.contestId !== contestId || attempt.status !== "in_progress") {
     throw new AttemptNotFoundError();
   }
+  const contestQuestion = await contestRepo.getContestQuestionById(
+    contestQuestionId,
+    contestId
+  );
+  if (!contestQuestion || !contestQuestion.mcqId) {
+    throw new QuestionNotFoundError();
+  }
   await submissionRepo.upsertDraftAnswer({
     attemptId,
-    problemId: questionId,
+    problemId: contestQuestion.mcqId,
     mcqOption,
   });
 };
@@ -229,7 +299,7 @@ export const saveMcqDraft = async (
 export const saveDsaDraft = async (
   contestId: number,
   attemptId: number,
-  problemId: number,
+  contestQuestionId: number,
   data: { code: string; language: string },
   userId: number
 ) => {
@@ -237,12 +307,38 @@ export const saveDsaDraft = async (
   if (!attempt || attempt.userId !== userId || attempt.contestId !== contestId || attempt.status !== "in_progress") {
     throw new AttemptNotFoundError();
   }
+  const contestQuestion = await contestRepo.getContestQuestionById(
+    contestQuestionId,
+    contestId
+  );
+  if (!contestQuestion || !contestQuestion.dsaId) {
+    throw new ProblemNotFoundError();
+  }
   await submissionRepo.upsertDraftAnswer({
     attemptId,
-    problemId,
+    problemId: contestQuestion.dsaId,
     code: data.code,
     language: data.language,
   });
+};
+
+export const submitContest = async (
+  contestId: number,
+  attemptId: number,
+  userId: number
+) => {
+  const attempt = await attemptRepo.getContestAttemptById(attemptId);
+  if (!attempt || attempt.userId !== userId || attempt.contestId !== contestId) {
+    throw new AttemptNotFoundError();
+  }
+  if (attempt.status !== "in_progress") {
+    throw new AttemptNotFoundError();
+  }
+  const updated = await attemptRepo.markAttemptSubmitted(attemptId, userId, contestId);
+  if (!updated) {
+    throw new AttemptNotFoundError();
+  }
+  return { success: true };
 };
 
 const isContestActive = (contest: Contest) => {

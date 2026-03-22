@@ -97,6 +97,31 @@ export const QuestionTypeEnum = z.enum(["mcq", "dsa"]);
 
 export type QuestionType = z.infer<typeof QuestionTypeEnum>;
 
+/** Canonical type keys for boilerplate signature (same as frontend) */
+const BOILERPLATE_TYPE_KEYS = [
+  "int", "long", "double", "boolean", "string",
+  "int[]", "long[]", "double[]", "boolean[]", "string[]", "int[][]",
+  "ListNode", "TreeNode", "void", "object",
+] as const;
+
+export const BoilerplateTypeKeyEnum = z.enum(BOILERPLATE_TYPE_KEYS);
+export type BoilerplateTypeKey = z.infer<typeof BoilerplateTypeKeyEnum>;
+
+export const BoilerplateParamSchema = z.object({
+  name: z.string(),
+  type: BoilerplateTypeKeyEnum,
+});
+
+export const BoilerplateSignatureSchema = z.object({
+  functionName: z.string(),
+  returnType: BoilerplateTypeKeyEnum,
+  parameters: z.array(BoilerplateParamSchema),
+  className: z.string(),
+  useClassWrapper: z.boolean(),
+});
+
+export type BoilerplateSignature = z.infer<typeof BoilerplateSignatureSchema>;
+
 
 
 export const UpdateDsaSchema = z
@@ -158,6 +183,8 @@ export const UpdateDsaSchema = z
       .min(1, { message: "At least one test case is required" })
       .optional(),
     boilerplate: z.record(z.string(), z.string()).optional(),
+    /** When provided, backend generates boilerplate from this; boilerplate in body is ignored */
+    boilerplateSignature: BoilerplateSignatureSchema.optional(),
     inputFormat: z.string().nullable().optional(),
     outputFormat: z.string().nullable().optional(),
     constraints: z.array(z.string()).optional(),
@@ -264,6 +291,8 @@ export const AddDsaSchema = z.object({
     .optional(),
   testCases: AddTestCaseSchema.default([]),
   boilerplate: z.record(z.string(), z.string()).optional().default({}),
+  /** When provided, backend generates boilerplate from this; boilerplate in body is ignored */
+  boilerplateSignature: BoilerplateSignatureSchema.optional(),
   inputFormat: z.string().nullable().optional(),
   outputFormat: z.string().nullable().optional(),
   constraints: z.array(z.string()).optional().default([]),

@@ -13,6 +13,7 @@ import MyContests from "./pages/MyContests";
 import Leaderboard from "./pages/Leaderboard";
 import Profile from "./pages/Profile";
 import ContestResultsPage from "./pages/ContestResultsPage";
+import ContestLeaderboardPage from "./pages/ContestLeaderboardPage";
 import { RouteErrorBoundary } from "./components/RouteErrorBoundary";
 
 export const router = createBrowserRouter([
@@ -58,6 +59,10 @@ export const router = createBrowserRouter([
       {
         path: "/contest/:contestId/attempt/:attemptId",
         element: <ContestPage />,
+      },
+      {
+        path: "/contest/:contestId/attempt/:attemptId/leaderboard",
+        element: <ContestLeaderboardPage />,
       },
       {
         path: "/my-contests",

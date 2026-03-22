@@ -15,6 +15,28 @@ export const getMcqSubmission = async (
   });
 };
 
+export const getMcqSubmissionByAttempt = async (
+  attemptId: number,
+  questionId: number
+) => {
+  return await prisma.mcqSubmission.findUnique({
+    where: {
+      attemptId_questionId: { attemptId, questionId },
+    },
+  });
+};
+
+export const getDsaSubmissionByAttempt = async (
+  attemptId: number,
+  problemId: number
+) => {
+  return await prisma.dsaSubmission.findUnique({
+    where: {
+      attemptId_problemId: { attemptId, problemId },
+    },
+  });
+};
+
 export const createMcqSubmission = async (data: {
   userId: number;
   questionId: number;

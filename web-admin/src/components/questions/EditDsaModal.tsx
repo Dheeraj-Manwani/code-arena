@@ -19,11 +19,15 @@ import {
 import { toast } from "react-hot-toast";
 import { Plus, Trash2, Clock, Database, FileCode } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { DsaProblem } from "@/schema/problem.schema";
 import { useUpdateDsaProblemMutation } from "@/queries/problem.mutations";
 import { UpdateDsaSchema, type UpdateDsaType } from "@/schema/problem.schema";
 import { problemApi } from "@/api/problem";
+import {
+  BOILERPLATE_TYPE_OPTIONS,
+  type BoilerplateParam,
+  type BoilerplateTypeKey,
+} from "@/lib/boilerplateGenerator";
 
 interface TestCase {
   id: string;
@@ -57,7 +61,13 @@ export const EditDsaModal = ({
     inputFormat: "",
     outputFormat: "",
     constraints: [""] as string[],
-    boilerplate: { cpp: "", python: "", java: "", javascript: "" } as Record<string, string>,
+  });
+  const [boilerplateSignature, setBoilerplateSignature] = useState({
+    functionName: "solve",
+    returnType: "int" as BoilerplateTypeKey,
+    parameters: [{ name: "", type: "int" as BoilerplateTypeKey }] as BoilerplateParam[],
+    className: "Solution",
+    useClassWrapper: true,
   });
   const [testCases, setTestCases] = useState<TestCase[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -82,15 +92,9 @@ export const EditDsaModal = ({
           (problem as { constraints?: string[] }).constraints!.length > 0
           ? (problem as { constraints: string[] }).constraints
           : [""],
-        boilerplate: {
-          cpp: (problem as { boilerplate?: Record<string, string> }).boilerplate?.cpp ?? "",
-          python: (problem as { boilerplate?: Record<string, string> }).boilerplate?.python ?? "",
-          java: (problem as { boilerplate?: Record<string, string> }).boilerplate?.java ?? "",
-          javascript: (problem as { boilerplate?: Record<string, string> }).boilerplate?.javascript ?? "",
-        },
       }));
 
-      // Fetch full problem details including test cases and format fields
+      // Fetch full problem details including test cases, format fields, and signature
       const fetchFull = async () => {
         try {
           const response = await problemApi.getDsaProblemById(problem.id);
@@ -99,7 +103,13 @@ export const EditDsaModal = ({
             inputFormat?: string | null;
             outputFormat?: string | null;
             constraints?: string[];
-            boilerplate?: Record<string, string>;
+            signature?: {
+              functionName?: string;
+              returnType?: string;
+              parameters?: Array<{ name: string; type: string }>;
+              className?: string;
+              useClassWrapper?: boolean;
+            };
           };
           if (fullProblem?.testCases && fullProblem.testCases.length > 0) {
             setTestCases(
@@ -121,13 +131,24 @@ export const EditDsaModal = ({
               Array.isArray(fullProblem.constraints) && fullProblem.constraints.length > 0
                 ? fullProblem.constraints
                 : [""],
-            boilerplate: {
-              cpp: fullProblem.boilerplate?.cpp ?? "",
-              python: fullProblem.boilerplate?.python ?? "",
-              java: fullProblem.boilerplate?.java ?? "",
-              javascript: fullProblem.boilerplate?.javascript ?? "",
-            },
           }));
+          // Populate signature form from stored signature (single source of truth)
+          const sig = fullProblem?.signature;
+          if (sig && typeof sig === "object" && "functionName" in sig) {
+            const params = Array.isArray(sig.parameters) && sig.parameters.length > 0
+              ? sig.parameters.map((p) => ({
+                  name: typeof p.name === "string" ? p.name : "",
+                  type: (typeof p.type === "string" ? p.type : "int") as BoilerplateTypeKey,
+                }))
+              : [{ name: "", type: "int" as BoilerplateTypeKey }];
+            setBoilerplateSignature({
+              functionName: typeof sig.functionName === "string" ? sig.functionName : "solve",
+              returnType: (typeof sig.returnType === "string" ? sig.returnType : "int") as BoilerplateTypeKey,
+              parameters: params,
+              className: typeof sig.className === "string" ? sig.className : "Solution",
+              useClassWrapper: typeof sig.useClassWrapper === "boolean" ? sig.useClassWrapper : true,
+            });
+          }
         } catch (error) {
           console.error("Failed to fetch problem details:", error);
           setTestCases([]);
@@ -188,6 +209,31 @@ export const EditDsaModal = ({
     }));
   };
 
+  const addBoilerplateParam = () => {
+    setBoilerplateSignature((s) => ({
+      ...s,
+      parameters: [...s.parameters, { name: "", type: "int" }],
+    }));
+  };
+  const removeBoilerplateParam = (index: number) => {
+    setBoilerplateSignature((s) => ({
+      ...s,
+      parameters: s.parameters.filter((_, i) => i !== index),
+    }));
+  };
+  const updateBoilerplateParam = (
+    index: number,
+    field: keyof BoilerplateParam,
+    value: string | BoilerplateTypeKey
+  ) => {
+    setBoilerplateSignature((s) => ({
+      ...s,
+      parameters: s.parameters.map((p, i) =>
+        i === index ? { ...p, [field]: value } : p
+      ),
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!problem) return;
@@ -211,11 +257,9 @@ export const EditDsaModal = ({
       inputFormat: formData.inputFormat.trim() || null,
       outputFormat: formData.outputFormat.trim() || null,
       constraints: formData.constraints.map((c) => c.trim()).filter(Boolean),
-      boilerplate: {
-        cpp: formData.boilerplate.cpp,
-        python: formData.boilerplate.python,
-        java: formData.boilerplate.java,
-        javascript: formData.boilerplate.javascript,
+      boilerplateSignature: {
+        ...boilerplateSignature,
+        parameters: boilerplateSignature.parameters.filter((p) => p.name.trim() !== ""),
       },
       ...(testCases.length > 0 && {
         testCases: testCases.map((tc) => ({
@@ -460,79 +504,155 @@ export const EditDsaModal = ({
             )}
           </div>
 
-          {/* Boilerplate templates */}
-          <div>
-            <Label className="arena-label flex items-center gap-2 mb-2">
-              <FileCode className="w-4 h-4" />
-              Boilerplate templates (per language)
-            </Label>
-            <p className="text-sm text-muted-foreground mb-3">
-              Optional starter code for C++, Python, Java, and JavaScript.
-            </p>
-            <Tabs defaultValue="cpp" className="w-full">
-              <TabsList className="bg-muted/50 w-full flex flex-wrap h-auto gap-1 p-1">
-                <TabsTrigger value="cpp">C++</TabsTrigger>
-                <TabsTrigger value="python">Python</TabsTrigger>
-                <TabsTrigger value="java">Java</TabsTrigger>
-                <TabsTrigger value="javascript">JavaScript</TabsTrigger>
-              </TabsList>
-              <TabsContent value="cpp" className="mt-2">
-                <Textarea
-                  value={formData.boilerplate.cpp}
+          {/* Solution signature — generates boilerplate for C++, Java, JS, Python */}
+          <div className="space-y-4 rounded-lg border border-border/50 bg-muted/20 p-4">
+            <div className="flex items-center gap-2">
+              <FileCode className="w-4 h-4 text-muted-foreground" />
+              <div>
+                <Label className="arena-label mb-0">
+                  Solution signature (generates starter code for all languages)
+                </Label>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Define the function/method signature; boilerplate for C++, Java, JavaScript, and Python is generated automatically.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label className="text-sm text-muted-foreground">Function / method name</Label>
+                <Input
+                  placeholder="e.g. twoSum, maxProfit"
+                  value={boilerplateSignature.functionName}
                   onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      boilerplate: { ...formData.boilerplate, cpp: e.target.value },
-                    })
+                    setBoilerplateSignature((s) => ({
+                      ...s,
+                      functionName: e.target.value.trim() || "solve",
+                    }))
                   }
-                  placeholder="#include &lt;bits/stdc++.h&gt;&#10;using namespace std;&#10;&#10;int main() { ... }"
                   disabled={isUpdating}
-                  className="arena-input w-full min-h-[160px] resize-y font-mono text-sm"
+                  className="arena-input w-full font-mono mt-1"
                 />
-              </TabsContent>
-              <TabsContent value="python" className="mt-2">
-                <Textarea
-                  value={formData.boilerplate.python}
+              </div>
+              <div>
+                <Label className="text-sm text-muted-foreground">Return type</Label>
+                <Select
+                  value={boilerplateSignature.returnType}
+                  onValueChange={(v: BoilerplateTypeKey) =>
+                    setBoilerplateSignature((s) => ({ ...s, returnType: v }))
+                  }
+                  disabled={isUpdating}
+                >
+                  <SelectTrigger className="arena-input w-full mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {BOILERPLATE_TYPE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <Label className="text-sm text-muted-foreground">Parameters</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addBoilerplateParam}
+                  disabled={isUpdating}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add parameter
+                </Button>
+              </div>
+              <div className="space-y-2">
+                {boilerplateSignature.parameters.map((p, index) => (
+                  <div key={index} className="flex gap-2 items-center">
+                    <Input
+                      placeholder="Param name (e.g. nums, target)"
+                      value={p.name}
+                      onChange={(e) =>
+                        updateBoilerplateParam(index, "name", e.target.value)
+                      }
+                      disabled={isUpdating}
+                      className="arena-input flex-1 font-mono text-sm"
+                    />
+                    <Select
+                      value={p.type}
+                      onValueChange={(v: BoilerplateTypeKey) =>
+                        updateBoilerplateParam(index, "type", v)
+                      }
+                      disabled={isUpdating}
+                    >
+                      <SelectTrigger className="arena-input w-[140px] font-mono text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {BOILERPLATE_TYPE_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeBoilerplateParam(index)}
+                      disabled={isUpdating || boilerplateSignature.parameters.length <= 1}
+                      className="shrink-0 text-muted-foreground hover:text-destructive"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="edit-use-class-wrapper"
+                  checked={boilerplateSignature.useClassWrapper}
                   onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      boilerplate: { ...formData.boilerplate, python: e.target.value },
-                    })
+                    setBoilerplateSignature((s) => ({
+                      ...s,
+                      useClassWrapper: e.target.checked,
+                    }))
                   }
-                  placeholder="# Your code here&#10;def main():&#10;    pass"
                   disabled={isUpdating}
-                  className="arena-input w-full min-h-[160px] resize-y font-mono text-sm"
+                  className="rounded border-border"
                 />
-              </TabsContent>
-              <TabsContent value="java" className="mt-2">
-                <Textarea
-                  value={formData.boilerplate.java}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      boilerplate: { ...formData.boilerplate, java: e.target.value },
-                    })
-                  }
-                  placeholder="import java.util.*;&#10;&#10;public class Solution { ... }"
-                  disabled={isUpdating}
-                  className="arena-input w-full min-h-[160px] resize-y font-mono text-sm"
-                />
-              </TabsContent>
-              <TabsContent value="javascript" className="mt-2">
-                <Textarea
-                  value={formData.boilerplate.javascript}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      boilerplate: { ...formData.boilerplate, javascript: e.target.value },
-                    })
-                  }
-                  placeholder="const readline = require('readline');&#10;// Your code here"
-                  disabled={isUpdating}
-                  className="arena-input w-full min-h-[160px] resize-y font-mono text-sm"
-                />
-              </TabsContent>
-            </Tabs>
+                <Label htmlFor="edit-use-class-wrapper" className="text-sm text-muted-foreground cursor-pointer">
+                  Use class wrapper (Java/C++: <code className="text-xs">class Solution</code> with method)
+                </Label>
+              </div>
+              {boilerplateSignature.useClassWrapper && (
+                <div>
+                  <Label className="text-sm text-muted-foreground">Class name</Label>
+                  <Input
+                    placeholder="Solution"
+                    value={boilerplateSignature.className}
+                    onChange={(e) =>
+                      setBoilerplateSignature((s) => ({
+                        ...s,
+                        className: e.target.value.trim() || "Solution",
+                      }))
+                    }
+                    disabled={isUpdating}
+                    className="arena-input w-full font-mono mt-1"
+                  />
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">

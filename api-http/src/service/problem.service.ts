@@ -86,9 +86,6 @@ export const updateDsaProblem = async (problemId: number, data: any, testCases: 
   if (!problem) {
     throw new ProblemNotFoundError();
   }
-  if (problem.creatorId !== creatorId) {
-    throw new ProblemNotFoundError(); // Or create a ForbiddenError
-  }
 
   return await problemRepo.updateDsaProblem(problemId, data, testCases);
 };

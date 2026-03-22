@@ -129,7 +129,7 @@ export const loginUser = async ({ email, password }: LoginInput) => {
   const user = await userRepo.getUserFromEmail(email);
 
   if (!user) {
-    throw new InvalidCredentialsError();
+    throw new UserNotFoundError();
   }
 
   if (!user.isVerified) {

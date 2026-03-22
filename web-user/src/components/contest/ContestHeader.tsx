@@ -1,5 +1,7 @@
 import { Clock, Trophy } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface ContestHeaderProps {
   title: string;
@@ -7,6 +9,10 @@ interface ContestHeaderProps {
   totalQuestions: number;
   duration: number; // in minutes
   startTime: number;
+  isLeaderboardOpen?: boolean;
+  onLeaderboardToggle?: () => void;
+  showRankUpdatedTooltip?: boolean;
+  onRankUpdatedTooltipSeen?: () => void;
 }
 
 const ContestHeader = ({
@@ -15,8 +21,24 @@ const ContestHeader = ({
   totalQuestions,
   duration,
   startTime,
+  isLeaderboardOpen,
+  onLeaderboardToggle,
+  showRankUpdatedTooltip = false,
+  onRankUpdatedTooltipSeen,
 }: ContestHeaderProps) => {
   const [timeRemaining, setTimeRemaining] = useState(duration * 60);
+  const [tooltipOpen, setTooltipOpen] = useState(false);
+
+  useEffect(() => {
+    if (showRankUpdatedTooltip) {
+      setTooltipOpen(true);
+      const t = setTimeout(() => {
+        setTooltipOpen(false);
+        onRankUpdatedTooltipSeen?.();
+      }, 3000);
+      return () => clearTimeout(t);
+    }
+  }, [showRankUpdatedTooltip, onRankUpdatedTooltipSeen]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -51,6 +73,24 @@ const ContestHeader = ({
         </div>
 
         <div className="flex items-center gap-6">
+          {onLeaderboardToggle && (
+            <Tooltip open={tooltipOpen} onOpenChange={setTooltipOpen}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={isLeaderboardOpen ? "secondary" : "outline"}
+                  size="sm"
+                  className="gap-2"
+                  onClick={onLeaderboardToggle}
+                >
+                  <Trophy className="h-4 w-4 text-amber-500" />
+                  Leaderboard
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                Rank Updated ↑↓
+              </TooltipContent>
+            </Tooltip>
+          )}
           {/* Progress indicator */}
           <div className="flex items-center gap-3">
             <span className="text-sm text-muted-foreground">Progress</span>

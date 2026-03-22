@@ -5,13 +5,11 @@ import {
   CreateContestInput,
   UpdateContestInput,
   ContestPhase,
-  ContestWithQuestions,
-  ContestWithDates,
-  Contest,
 } from "../schema/contest.schema";
 import { ContestType, Prisma, Role, ContestStatus } from "@prisma/client";
 import { AddDsaType, AddMcqType } from "../schema/problem.schema";
 import { getContestPhase, mapDBContestToContest } from "../util/mappers";
+import { toStoredSignature } from "../util/boilerplate";
 
 export const getAllContests = async (
   page: number,
@@ -168,11 +166,17 @@ export const addDsaToContest = async (
     throw new ContestNotFoundError();
   }
 
-  const { testCases, ...problemData } = input;
+  if (input.boilerplateSignature == null) {
+    throw new Error("boilerplateSignature is required for DSA problems");
+  }
+
+  const signature = toStoredSignature(input.boilerplateSignature);
+  const { testCases, boilerplate: _boilerplate, boilerplateSignature: _sig, ...rest } = input;
 
   const dsaProblem = await problemRepo.createDsaProblem(
     {
-      ...problemData,
+      ...rest,
+      signature,
       contestId,
       creatorId,
     },

@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { Difficulty, PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
 
 const prisma = new PrismaClient();
@@ -53,18 +53,314 @@ const mcqQuestions = [
   { questionText: "What is the time complexity of inserting an element at the beginning of a linked list?", options: ["O(n)", "O(log n)", "O(1)", "O(n²)"], correctOptionIndex: 2, points: 10 },
 ];
 
+/** Normalize seed signature to BoilerplateSignature format (parameters, className, useClassWrapper) */
+function toSignature(sig: {
+  functionName: string;
+  params: Array<{ name: string; type: string }>;
+  returnType: string;
+  className?: string;
+  useClassWrapper?: boolean;
+}) {
+  return {
+    functionName: sig.functionName,
+    returnType: sig.returnType,
+    parameters: sig.params,
+    className: sig.className ?? "Solution",
+    useClassWrapper: sig.useClassWrapper ?? true,
+  };
+}
+
 // --- DSA pool (reused across contests) ---
-const dsaProblems = [
-  { title: "Two Sum", description: "Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target.", tags: ["Array", "Hash Table"], points: 100, timeLimit: 2000, memoryLimit: 256, difficulty: "easy" as const, testCases: [{ input: "[2,7,11,15]\n9", expectedOutput: "[0,1]", isHidden: false }, { input: "[3,2,4]\n6", expectedOutput: "[1,2]", isHidden: false }] },
-  { title: "Reverse Linked List", description: "Given the head of a singly linked list, reverse the list, and return the reversed list.", tags: ["Linked List", "Recursion"], points: 150, timeLimit: 3000, memoryLimit: 256, difficulty: "easy" as const, testCases: [{ input: "[1,2,3,4,5]", expectedOutput: "[5,4,3,2,1]", isHidden: false }] },
-  { title: "Merge Two Sorted Lists", description: "Merge two sorted linked lists and return it as a sorted list.", tags: ["Linked List", "Recursion"], points: 150, timeLimit: 2000, memoryLimit: 256, difficulty: "easy" as const, testCases: [{ input: "[1,2,4]\n[1,3,4]", expectedOutput: "[1,1,2,3,4,4]", isHidden: false }] },
-  { title: "Valid Parentheses", description: "Given a string s containing just the characters '(', ')', '{', '}', '[' and ']', determine if the input string is valid.", tags: ["String", "Stack"], points: 100, timeLimit: 2000, memoryLimit: 256, difficulty: "easy" as const, testCases: [{ input: "()", expectedOutput: "true", isHidden: false }, { input: "()[]{}", expectedOutput: "true", isHidden: false }, { input: "(]", expectedOutput: "false", isHidden: false }] },
-  { title: "Longest Substring Without Repeating Characters", description: "Given a string s, find the length of the longest substring without repeating characters.", tags: ["String", "Sliding Window", "Hash Table"], points: 200, timeLimit: 3000, memoryLimit: 256, difficulty: "medium" as const, testCases: [{ input: "abcabcbb", expectedOutput: "3", isHidden: false }, { input: "bbbbb", expectedOutput: "1", isHidden: false }] },
-  { title: "Binary Tree Level Order Traversal", description: "Given the root of a binary tree, return the level order traversal of its nodes' values.", tags: ["Tree", "BFS"], points: 200, timeLimit: 2000, memoryLimit: 256, difficulty: "medium" as const, testCases: [{ input: "[3,9,20,null,null,15,7]", expectedOutput: "[[3],[9,20],[15,7]]", isHidden: false }] },
-  { title: "Maximum Subarray", description: "Find the contiguous subarray (containing at least one number) which has the largest sum and return its sum.", tags: ["Array", "Dynamic Programming"], points: 200, timeLimit: 2000, memoryLimit: 256, difficulty: "medium" as const, testCases: [{ input: "[-2,1,-3,4,-1,2,1,-5,4]", expectedOutput: "6", isHidden: false }] },
-  { title: "Best Time to Buy and Sell Stock", description: "You are given an array prices where prices[i] is the price of a given stock on the ith day. Find the maximum profit you can achieve.", tags: ["Array", "Dynamic Programming"], points: 150, timeLimit: 2000, memoryLimit: 256, difficulty: "easy" as const, testCases: [{ input: "[7,1,5,3,6,4]", expectedOutput: "5", isHidden: false }] },
-  { title: "Climbing Stairs", description: "You are climbing a staircase. It takes n steps to reach the top. Each time you can either climb 1 or 2 steps. In how many distinct ways can you climb to the top?", tags: ["Math", "Dynamic Programming", "Memoization"], points: 150, timeLimit: 2000, memoryLimit: 256, difficulty: "easy" as const, testCases: [{ input: "2", expectedOutput: "2", isHidden: false }, { input: "3", expectedOutput: "3", isHidden: false }] },
-  { title: "Container With Most Water", description: "Given n non-negative integers representing an elevation map where the width of each bar is 1, compute how much water it can trap after raining.", tags: ["Array", "Two Pointers", "Greedy"], points: 250, timeLimit: 3000, memoryLimit: 256, difficulty: "medium" as const, testCases: [{ input: "[1,8,6,2,5,4,8,3,7]", expectedOutput: "49", isHidden: false }] },
+export const dsaProblems = [
+  {
+    title: "Two Sum",
+    description: "Return indices of two numbers such that they add up to the target.",
+    tags: ["Array", "Hash Table"],
+    difficulty: "easy",
+    points: 100,
+    timeLimit: 2000,
+    memoryLimit: 256,
+    signature: toSignature({
+      functionName: "twoSum",
+      params: [
+        { name: "nums", type: "int[]" },
+        { name: "target", type: "int" }
+      ],
+      returnType: "int[]"
+    }),
+    testCases: [
+      { input: "[2,7,11,15]\n9", expectedOutput: "[0,1]", isHidden: false },
+      { input: "[3,3]\n6", expectedOutput: "[0,1]", isHidden: true }
+    ]
+  },
+
+  {
+    title: "Maximum Subarray",
+    description: "Find the contiguous subarray with the maximum sum.",
+    tags: ["Array", "DP"],
+    difficulty: "easy",
+    points: 120,
+    timeLimit: 2000,
+    memoryLimit: 256,
+    signature: toSignature({
+      functionName: "maxSubArray",
+      params: [{ name: "nums", type: "int[]" }],
+      returnType: "int"
+    }),
+    testCases: [
+      { input: "[-2,1,-3,4,-1,2,1,-5,4]", expectedOutput: "6", isHidden: false }
+    ]
+  },
+
+  {
+    title: "Rotate Array",
+    description: "Rotate array to the right by k steps.",
+    tags: ["Array"],
+    difficulty: "easy",
+    points: 100,
+    timeLimit: 2000,
+    memoryLimit: 256,
+    signature: toSignature({
+      functionName: "rotate",
+      params: [
+        { name: "nums", type: "int[]" },
+        { name: "k", type: "int" }
+      ],
+      returnType: "void"
+    }),
+    testCases: [
+      { input: "[1,2,3,4,5,6,7]\n3", expectedOutput: "[5,6,7,1,2,3,4]", isHidden: false }
+    ]
+  },
+
+  {
+    title: "Valid Parentheses",
+    description: "Check if parentheses are valid.",
+    tags: ["Stack", "String"],
+    difficulty: "easy",
+    points: 90,
+    timeLimit: 2000,
+    memoryLimit: 256,
+    signature: toSignature({
+      functionName: "isValid",
+      params: [{ name: "s", type: "string" }],
+      returnType: "boolean"
+    }),
+    testCases: [
+      { input: "()[]{}", expectedOutput: "true", isHidden: false },
+      { input: "(]", expectedOutput: "false", isHidden: true }
+    ]
+  },
+
+  {
+    title: "Longest Substring Without Repeating Characters",
+    description: "Return length of longest substring without repeating characters.",
+    tags: ["String", "Sliding Window"],
+    difficulty: "medium",
+    points: 180,
+    timeLimit: 3000,
+    memoryLimit: 256,
+    signature: toSignature({
+      functionName: "lengthOfLongestSubstring",
+      params: [{ name: "s", type: "string" }],
+      returnType: "int"
+    }),
+    testCases: [
+      { input: "abcabcbb", expectedOutput: "3", isHidden: false }
+    ]
+  },
+
+  {
+    title: "Reverse Linked List",
+    description: "Reverse a singly linked list.",
+    tags: ["Linked List"],
+    difficulty: "easy",
+    points: 120,
+    timeLimit: 2000,
+    memoryLimit: 256,
+    signature: toSignature({
+      functionName: "reverseList",
+      params: [{ name: "head", type: "ListNode" }],
+      returnType: "ListNode"
+    }),
+    testCases: [
+      { input: "[1,2,3,4,5]", expectedOutput: "[5,4,3,2,1]", isHidden: false }
+    ]
+  },
+
+  {
+    title: "Detect Cycle in Linked List",
+    description: "Detect if a linked list has a cycle.",
+    tags: ["Linked List", "Two Pointers"],
+    difficulty: "medium",
+    points: 180,
+    timeLimit: 2000,
+    memoryLimit: 256,
+    signature: toSignature({
+      functionName: "hasCycle",
+      params: [{ name: "head", type: "ListNode" }],
+      returnType: "boolean"
+    }),
+    testCases: [
+      { input: "[3,2,0,-4]\npos=1", expectedOutput: "true", isHidden: false }
+    ]
+  },
+
+  {
+    title: "Binary Tree Level Order Traversal",
+    description: "Return level order traversal of a binary tree.",
+    tags: ["Tree", "BFS"],
+    difficulty: "medium",
+    points: 180,
+    timeLimit: 2000,
+    memoryLimit: 256,
+    signature: toSignature({
+      functionName: "levelOrder",
+      params: [{ name: "root", type: "TreeNode" }],
+      returnType: "int[][]"
+    }),
+    testCases: [
+      { input: "[3,9,20,null,null,15,7]", expectedOutput: "[[3],[9,20],[15,7]]", isHidden: false }
+    ]
+  },
+
+  {
+    title: "Lowest Common Ancestor of BST",
+    description: "Find LCA of two nodes in BST.",
+    tags: ["Tree", "BST"],
+    difficulty: "medium",
+    points: 160,
+    timeLimit: 2000,
+    memoryLimit: 256,
+    signature: toSignature({
+      functionName: "lowestCommonAncestor",
+      params: [
+        { name: "root", type: "TreeNode" },
+        { name: "p", type: "TreeNode" },
+        { name: "q", type: "TreeNode" }
+      ],
+      returnType: "TreeNode"
+    }),
+    testCases: [
+      { input: "[6,2,8,0,4,7,9]\n2\n8", expectedOutput: "6", isHidden: false }
+    ]
+  },
+
+  {
+    title: "Number of Islands",
+    description: "Count number of islands in a grid.",
+    tags: ["DFS", "Graph"],
+    difficulty: "medium",
+    points: 200,
+    timeLimit: 3000,
+    memoryLimit: 256,
+    signature: toSignature({
+      functionName: "numIslands",
+      params: [{ name: "grid", type: "int[][]" }], // char[][] not supported; use int[][] for 0/1 grid
+      returnType: "int"
+    }),
+    testCases: [
+      { input: "[[1,1,0],[0,1,0],[1,0,1]]", expectedOutput: "3", isHidden: false }
+    ]
+  },
+
+  {
+    title: "Climbing Stairs",
+    description: "Return number of distinct ways to climb stairs.",
+    tags: ["DP"],
+    difficulty: "easy",
+    points: 100,
+    timeLimit: 2000,
+    memoryLimit: 256,
+    signature: toSignature({
+      functionName: "climbStairs",
+      params: [{ name: "n", type: "int" }],
+      returnType: "int"
+    }),
+    testCases: [
+      { input: "5", expectedOutput: "8", isHidden: false }
+    ]
+  },
+
+  {
+    title: "Coin Change",
+    description: "Find minimum coins needed for amount.",
+    tags: ["DP"],
+    difficulty: "medium",
+    points: 180,
+    timeLimit: 3000,
+    memoryLimit: 256,
+    signature: toSignature({
+      functionName: "coinChange",
+      params: [
+        { name: "coins", type: "int[]" },
+        { name: "amount", type: "int" }
+      ],
+      returnType: "int"
+    }),
+    testCases: [
+      { input: "[1,2,5]\n11", expectedOutput: "3", isHidden: false }
+    ]
+  },
+
+  {
+    title: "Longest Increasing Subsequence",
+    description: "Return length of LIS.",
+    tags: ["DP", "Binary Search"],
+    difficulty: "medium",
+    points: 200,
+    timeLimit: 3000,
+    memoryLimit: 256,
+    signature: toSignature({
+      functionName: "lengthOfLIS",
+      params: [{ name: "nums", type: "int[]" }],
+      returnType: "int"
+    }),
+    testCases: [
+      { input: "[10,9,2,5,3,7,101,18]", expectedOutput: "4", isHidden: false }
+    ]
+  },
+
+  {
+    title: "Edit Distance",
+    description: "Return minimum operations to convert word1 to word2.",
+    tags: ["DP", "String"],
+    difficulty: "hard",
+    points: 320,
+    timeLimit: 4000,
+    memoryLimit: 512,
+    signature: toSignature({
+      functionName: "minDistance",
+      params: [
+        { name: "word1", type: "string" },
+        { name: "word2", type: "string" }
+      ],
+      returnType: "int"
+    }),
+    testCases: [
+      { input: "horse\nros", expectedOutput: "3", isHidden: false }
+    ]
+  },
+
+  {
+    title: "LRU Cache",
+    description: "Design LRU Cache.",
+    tags: ["Design", "Hash Table"],
+    difficulty: "hard",
+    points: 350,
+    timeLimit: 4000,
+    memoryLimit: 512,
+    signature: toSignature({
+      functionName: "LRUCache",
+      params: [{ name: "capacity", type: "int" }],
+      returnType: "object",
+      className: "LRUCache",
+      useClassWrapper: true,
+    }),
+    testCases: [
+      { input: "LRUCache(2)\nput(1,1)\nput(2,2)\nget(1)", expectedOutput: "1", isHidden: false }
+    ]
+  }
 ];
 
 const statuses: Array<"draft" | "published" | "cancelled"> = ["draft", "published", "cancelled"];
@@ -201,7 +497,8 @@ async function main() {
           points: t.points,
           timeLimit: t.timeLimit,
           memoryLimit: t.memoryLimit,
-          difficulty: t.difficulty,
+          difficulty: t.difficulty as Difficulty,
+          signature: t.signature as object,
           creatorId,
         },
       });

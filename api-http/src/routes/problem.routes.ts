@@ -1,7 +1,6 @@
 import { Router } from "express";
 import { authenticateToken, requireCreator } from "../middleware/auth";
 import * as problemController from "../controller/problem.controller";
-import * as submissionController from "../controller/submission.controller";
 
 const router = Router();
 
@@ -14,11 +13,5 @@ router.get("/dsa/:problemId", authenticateToken, requireCreator, problemControll
 router.patch("/mcq/:questionId", authenticateToken, requireCreator, problemController.updateMcqQuestion);
 router.patch("/dsa/:problemId", authenticateToken, requireCreator, problemController.updateDsaProblem);
 router.get("/:problemId", authenticateToken, problemController.getProblemById);
-
-router.post(
-  "/:problemId/submit",
-  authenticateToken,
-  submissionController.submitDsa
-);
 
 export default router;

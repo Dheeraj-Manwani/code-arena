@@ -209,7 +209,7 @@ export const getContestByIdWithProblems = async (contestId: number, includeHidde
               memoryLimit: true,
               difficulty: true,
               maxDurationMs: true,
-              boilerplate: true,
+              signature: true,
               inputFormat: true,
               outputFormat: true,
               constraints: true,
@@ -250,6 +250,82 @@ export const getContestQuestionCount = async (contestId: number) => {
   return await prisma.contestQuestion.count({
     where: { contestId },
   });
+};
+
+export const getContestQuestionById = async (
+  contestQuestionId: number,
+  contestId: number
+) => {
+  return await prisma.contestQuestion.findFirst({
+    where: {
+      id: contestQuestionId,
+      contestId,
+    },
+    include: {
+      mcq: { select: { id: true } },
+      dsa: { select: { id: true } },
+    },
+  });
+};
+
+export const getContestQuestionWithMcq = async (
+  contestQuestionId: number,
+  contestId: number
+) => {
+  return await prisma.contestQuestion.findFirst({
+    where: {
+      id: contestQuestionId,
+      contestId,
+    },
+    include: {
+      mcq: {
+        select: {
+          id: true,
+          correctOptionIndex: true,
+          points: true,
+        },
+      },
+      contest: true,
+    },
+  });
+};
+
+export const getContestQuestionWithDsa = async (
+  contestQuestionId: number,
+  contestId: number
+) => {
+  return await prisma.contestQuestion.findFirst({
+    where: {
+      id: contestQuestionId,
+      contestId,
+    },
+    include: {
+      dsa: {
+        include: {
+          testCases: true,
+        },
+      },
+      contest: true,
+    },
+  });
+};
+
+/**
+ * Returns the next ContestQuestion.id after the given current contest question, or null if it was the last.
+ */
+export const getNextContestQuestionIdAfter = async (
+  contestId: number,
+  currentContestQuestionId: number
+): Promise<number | null> => {
+  const questions = await prisma.contestQuestion.findMany({
+    where: { contestId },
+    orderBy: { order: "asc" },
+    select: { id: true },
+  });
+  const idx = questions.findIndex((q) => q.id === currentContestQuestionId);
+  if (idx < 0 || idx >= questions.length - 1) return null;
+  const next = questions[idx + 1];
+  return next?.id ?? null;
 };
 
 export const updateContest = async (

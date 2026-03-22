@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum Role {
@@ -102,8 +103,10 @@ model ContestAttempt {
   userId    Int
   contestId Int
 
-  startedAt   DateTime      @default(now())
-  deadlineAt  DateTime
+  currentProblemId Int?
+
+  startedAt  DateTime @default(now())
+  deadlineAt DateTime
 
   submittedAt DateTime?
   durationMs  Int?
@@ -152,10 +155,10 @@ model DsaProblem {
   difficulty    Difficulty?
   maxDurationMs Int?
 
-  boilerplate  Json @default("{}")
-  inputFormat String?
+  signature    Json
+  inputFormat  String?
   outputFormat String?
-  constraints String[] @default([])
+  constraints  String[] @default([])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -182,9 +185,9 @@ model ContestQuestion {
   mcq     McqQuestion? @relation(fields: [mcqId], references: [id])
   dsa     DsaProblem?  @relation(fields: [dsaId], references: [id])
 
-  @@index([contestId])
   @@unique([contestId, mcqId])
   @@unique([contestId, dsaId])
+  @@index([contestId])
 }
 
 model TestCase {
@@ -218,11 +221,11 @@ model McqSubmission {
   contest  Contest        @relation(fields: [contestId], references: [id])
   attempt  ContestAttempt @relation(fields: [attemptId], references: [id])
 
+  @@unique([attemptId, questionId])
   @@index([questionId])
   @@index([contestId])
   @@index([attemptId])
   @@map("mcq_submissions")
-  @@unique([attemptId, questionId])
 }
 
 model DsaSubmission {
@@ -246,11 +249,11 @@ model DsaSubmission {
   contest Contest        @relation(fields: [contestId], references: [id])
   attempt ContestAttempt @relation(fields: [attemptId], references: [id])
 
+  @@unique([attemptId, problemId])
   @@index([problemId])
   @@index([contestId])
   @@index([attemptId])
   @@map("dsa_submissions")
-  @@unique([attemptId, problemId])
 }
 
 model ContestLeaderboard {

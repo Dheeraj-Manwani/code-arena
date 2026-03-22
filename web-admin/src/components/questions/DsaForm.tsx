@@ -13,7 +13,12 @@ import {
 import { Plus, Trash2, Clock, Database, FileCode } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AddDsaSchema, type AddDsaType } from "@/schema/problem.schema";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  BOILERPLATE_TYPE_OPTIONS,
+  type BoilerplateSignature,
+  type BoilerplateParam,
+  type BoilerplateTypeKey,
+} from "@/lib/boilerplateGenerator";
 
 interface TestCase {
   input: string;
@@ -56,12 +61,15 @@ export const DsaForm = ({
     constraints: Array.isArray(initialData?.constraints) && initialData.constraints.length > 0
       ? initialData.constraints
       : [""],
-    boilerplate: {
-      cpp: initialData?.boilerplate?.cpp ?? "",
-      python: initialData?.boilerplate?.python ?? "",
-      java: initialData?.boilerplate?.java ?? "",
-      javascript: initialData?.boilerplate?.javascript ?? "",
-    },
+  });
+  const [boilerplateSignature, setBoilerplateSignature] = useState<
+    Omit<BoilerplateSignature, "parameters"> & { parameters: BoilerplateParam[] }
+  >({
+    functionName: "solve",
+    returnType: "int",
+    parameters: [{ name: "", type: "int" }],
+    className: "Solution",
+    useClassWrapper: true,
   });
   const [testCases, setTestCases] = useState<TestCase[]>(
     initialData?.testCases && initialData.testCases.length > 0
@@ -113,6 +121,31 @@ export const DsaForm = ({
     }));
   };
 
+  const addBoilerplateParam = () => {
+    setBoilerplateSignature((s) => ({
+      ...s,
+      parameters: [...s.parameters, { name: "", type: "int" }],
+    }));
+  };
+  const removeBoilerplateParam = (index: number) => {
+    setBoilerplateSignature((s) => ({
+      ...s,
+      parameters: s.parameters.filter((_, i) => i !== index),
+    }));
+  };
+  const updateBoilerplateParam = (
+    index: number,
+    field: keyof BoilerplateParam,
+    value: string | BoilerplateTypeKey
+  ) => {
+    setBoilerplateSignature((s) => ({
+      ...s,
+      parameters: s.parameters.map((p, i) =>
+        i === index ? { ...p, [field]: value } : p
+      ),
+    }));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -135,11 +168,9 @@ export const DsaForm = ({
       inputFormat: formData.inputFormat.trim() || undefined,
       outputFormat: formData.outputFormat.trim() || undefined,
       constraints: formData.constraints.map((c) => c.trim()).filter(Boolean),
-      boilerplate: {
-        cpp: formData.boilerplate.cpp,
-        python: formData.boilerplate.python,
-        java: formData.boilerplate.java,
-        javascript: formData.boilerplate.javascript,
+      boilerplateSignature: {
+        ...boilerplateSignature,
+        parameters: boilerplateSignature.parameters.filter((p) => p.name.trim() !== ""),
       },
       testCases: testCases.map((tc) => ({
         input: tc.input.trim(),
@@ -377,79 +408,155 @@ export const DsaForm = ({
         )}
       </div>
 
-      {/* Boilerplate templates */}
-      <div>
-        <Label className="arena-label flex items-center gap-2 mb-2">
-          <FileCode className="w-4 h-4" />
-          Boilerplate templates (per language)
-        </Label>
-        <p className="text-sm text-muted-foreground mb-3">
-          Optional starter code for C++, Python, Java, and JavaScript.
-        </p>
-        <Tabs defaultValue="cpp" className="w-full">
-          <TabsList className="bg-muted/50 w-full flex flex-wrap h-auto gap-1 p-1">
-            <TabsTrigger value="cpp">C++</TabsTrigger>
-            <TabsTrigger value="python">Python</TabsTrigger>
-            <TabsTrigger value="java">Java</TabsTrigger>
-            <TabsTrigger value="javascript">JavaScript</TabsTrigger>
-          </TabsList>
-          <TabsContent value="cpp" className="mt-2">
-            <Textarea
-              value={formData.boilerplate.cpp}
+      {/* Solution signature — generates boilerplate for C++, Java, JS, Python */}
+      <div className="space-y-4 rounded-lg border border-border/50 bg-muted/20 p-4">
+        <div className="flex items-center gap-2">
+          <FileCode className="w-4 h-4 text-muted-foreground" />
+          <div>
+            <Label className="arena-label mb-0">
+              Solution signature (generates starter code for all languages)
+            </Label>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Define the function/method signature; boilerplate for C++, Java, JavaScript, and Python is generated automatically.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <Label className="text-sm text-muted-foreground">Function / method name</Label>
+            <Input
+              placeholder="e.g. twoSum, maxProfit"
+              value={boilerplateSignature.functionName}
               onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  boilerplate: { ...formData.boilerplate, cpp: e.target.value },
-                })
+                setBoilerplateSignature((s) => ({
+                  ...s,
+                  functionName: e.target.value.trim() || "solve",
+                }))
               }
-              placeholder="#include &lt;bits/stdc++.h&gt;&#10;using namespace std;&#10;&#10;int main() { ... }"
               disabled={isSubmitting}
-              className="arena-input w-full min-h-[160px] resize-y font-mono text-sm"
+              className="arena-input w-full font-mono mt-1"
             />
-          </TabsContent>
-          <TabsContent value="python" className="mt-2">
-            <Textarea
-              value={formData.boilerplate.python}
+          </div>
+          <div>
+            <Label className="text-sm text-muted-foreground">Return type</Label>
+            <Select
+              value={boilerplateSignature.returnType}
+              onValueChange={(v: BoilerplateTypeKey) =>
+                setBoilerplateSignature((s) => ({ ...s, returnType: v }))
+              }
+              disabled={isSubmitting}
+            >
+              <SelectTrigger className="arena-input w-full mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {BOILERPLATE_TYPE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <Label className="text-sm text-muted-foreground">Parameters</Label>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addBoilerplateParam}
+              disabled={isSubmitting}
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add parameter
+            </Button>
+          </div>
+          <div className="space-y-2">
+            {boilerplateSignature.parameters.map((p, index) => (
+              <div key={index} className="flex gap-2 items-center">
+                <Input
+                  placeholder="Param name (e.g. nums, target)"
+                  value={p.name}
+                  onChange={(e) =>
+                    updateBoilerplateParam(index, "name", e.target.value)
+                  }
+                  disabled={isSubmitting}
+                  className="arena-input flex-1 font-mono text-sm"
+                />
+                <Select
+                  value={p.type}
+                  onValueChange={(v: BoilerplateTypeKey) =>
+                    updateBoilerplateParam(index, "type", v)
+                  }
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger className="arena-input w-[140px] font-mono text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {BOILERPLATE_TYPE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => removeBoilerplateParam(index)}
+                  disabled={isSubmitting || boilerplateSignature.parameters.length <= 1}
+                  className="shrink-0 text-muted-foreground hover:text-destructive"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="use-class-wrapper"
+              checked={boilerplateSignature.useClassWrapper}
               onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  boilerplate: { ...formData.boilerplate, python: e.target.value },
-                })
+                setBoilerplateSignature((s) => ({
+                  ...s,
+                  useClassWrapper: e.target.checked,
+                }))
               }
-              placeholder={`# Your code here&#10;def main():&#10;    pass&#10;&#10;if __name__ == "__main__":&#10;    main()`}
               disabled={isSubmitting}
-              className="arena-input w-full min-h-[160px] resize-y font-mono text-sm"
+              className="rounded border-border"
             />
-          </TabsContent>
-          <TabsContent value="java" className="mt-2">
-            <Textarea
-              value={formData.boilerplate.java}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  boilerplate: { ...formData.boilerplate, java: e.target.value },
-                })
-              }
-              placeholder="import java.util.*;&#10;&#10;public class Solution {&#10;    public static void main(String[] args) { ... }&#10;}"
-              disabled={isSubmitting}
-              className="arena-input w-full min-h-[160px] resize-y font-mono text-sm"
-            />
-          </TabsContent>
-          <TabsContent value="javascript" className="mt-2">
-            <Textarea
-              value={formData.boilerplate.javascript}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  boilerplate: { ...formData.boilerplate, javascript: e.target.value },
-                })
-              }
-              placeholder="const readline = require('readline');&#10;// Your code here"
-              disabled={isSubmitting}
-              className="arena-input w-full min-h-[160px] resize-y font-mono text-sm"
-            />
-          </TabsContent>
-        </Tabs>
+            <Label htmlFor="use-class-wrapper" className="text-sm text-muted-foreground cursor-pointer">
+              Use class wrapper (Java/C++: <code className="text-xs">class Solution</code> with method)
+            </Label>
+          </div>
+          {boilerplateSignature.useClassWrapper && (
+            <div>
+              <Label className="text-sm text-muted-foreground">Class name</Label>
+              <Input
+                placeholder="Solution"
+                value={boilerplateSignature.className}
+                onChange={(e) =>
+                  setBoilerplateSignature((s) => ({
+                    ...s,
+                    className: e.target.value.trim() || "Solution",
+                  }))
+                }
+                disabled={isSubmitting}
+                className="arena-input w-full font-mono mt-1"
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">

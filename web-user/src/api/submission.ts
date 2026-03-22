@@ -30,23 +30,33 @@ export const submissionApi = {
 
   submitMcq: async (
     contestId: number,
+    attemptId: number,
     questionId: number,
     data: SubmitMcqSchemaType
   ) => {
     const res = await api.post(
-      `/api/contests/${contestId}/mcq/${questionId}/submit`,
+      `/api/contests/${contestId}/attempt/${attemptId}/mcq/${questionId}/submit`,
       data
     );
     return res.data;
   },
 
   submitDsa: async (
+    contestId: number,
+    attemptId: number,
     problemId: number,
     data: SubmitDsaSchemaType
   ) => {
     const res = await api.post(
-      `/api/problems/${problemId}/submit`,
+      `/api/contests/${contestId}/attempt/${attemptId}/dsa/${problemId}/submit`,
       data
+    );
+    return res.data;
+  },
+
+  submitContest: async (contestId: number, attemptId: number) => {
+    const res = await api.post(
+      `/api/contests/${contestId}/attempt/${attemptId}/submit`
     );
     return res.data;
   },

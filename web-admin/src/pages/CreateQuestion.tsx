@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import { motion } from "motion/react";
 import { pageVariants } from "@/lib/animations";
 import { AddMcqSchema, AddDsaSchema, type AddMcqType, type AddDsaType } from "@/schema/problem.schema";
+import { LANGUAGES, LANGUAGE_CONFIG, BOILERPLATE_PLACEHOLDER } from "@/schema/language.schema";
 
 import {
   useCreateMcqQuestionMutation,
@@ -76,7 +77,7 @@ const CreateQuestion = () => {
     inputFormat: "",
     outputFormat: "",
     constraints: [""],
-    boilerplate: { cpp: "", python: "", java: "", javascript: "" },
+    boilerplate: Object.fromEntries(LANGUAGES.map((lang) => [lang, ""])) as Record<string, string>,
   });
   const [testCases, setTestCases] = useState<TestCase[]>([
     { id: "1", input: "", expectedOutput: "", isHidden: false },
@@ -281,12 +282,9 @@ const CreateQuestion = () => {
       inputFormat: dsaForm.inputFormat.trim() || undefined,
       outputFormat: dsaForm.outputFormat.trim() || undefined,
       constraints: dsaForm.constraints.map((c) => c.trim()).filter(Boolean),
-      boilerplate: {
-        cpp: dsaForm.boilerplate.cpp,
-        python: dsaForm.boilerplate.python,
-        java: dsaForm.boilerplate.java,
-        javascript: dsaForm.boilerplate.javascript,
-      },
+      boilerplate: Object.fromEntries(
+        LANGUAGES.map((lang) => [lang, dsaForm.boilerplate[lang] ?? ""])
+      ),
     };
 
     // Validate using zod schema
@@ -889,83 +887,35 @@ const CreateQuestion = () => {
                     Boilerplate templates (per language)
                   </Label>
                   <p className="text-sm text-muted-foreground mb-3">
-                    Optional starter code for C++, Python, Java, and JavaScript.
+                    Optional starter code for each supported language.
                   </p>
-                  <Tabs defaultValue="cpp" className="w-full">
+                  <Tabs defaultValue={LANGUAGES[0]} className="w-full">
                     <TabsList className="bg-muted/50 w-full flex flex-wrap h-auto gap-1 p-1">
-                      <TabsTrigger value="cpp">C++</TabsTrigger>
-                      <TabsTrigger value="python">Python</TabsTrigger>
-                      <TabsTrigger value="java">Java</TabsTrigger>
-                      <TabsTrigger value="javascript">JavaScript</TabsTrigger>
+                      {LANGUAGES.map((lang) => (
+                        <TabsTrigger key={lang} value={lang}>
+                          {LANGUAGE_CONFIG[lang].label}
+                        </TabsTrigger>
+                      ))}
                     </TabsList>
-                    <TabsContent value="cpp" className="mt-2">
-                      <Textarea
-                        value={dsaForm.boilerplate.cpp}
-                        onChange={(e) =>
-                          setDsaForm({
-                            ...dsaForm,
-                            boilerplate: {
-                              ...dsaForm.boilerplate,
-                              cpp: e.target.value,
-                            },
-                          })
-                        }
-                        placeholder="#include <bits/stdc++.h>&#10;using namespace std;&#10;&#10;int main() { ... }"
-                        disabled={isCreatingDsa}
-                        className="arena-input w-full min-h-[160px] resize-y font-mono text-sm"
-                      />
-                    </TabsContent>
-                    <TabsContent value="python" className="mt-2">
-                      <Textarea
-                        value={dsaForm.boilerplate.python}
-                        onChange={(e) =>
-                          setDsaForm({
-                            ...dsaForm,
-                            boilerplate: {
-                              ...dsaForm.boilerplate,
-                              python: e.target.value,
-                            },
-                          })
-                        }
-                        placeholder="# Your code here&#10;def main():&#10;    pass&#10;&#10;if __name__ == &quot;__main__&quot;:&#10;    main()"
-                        disabled={isCreatingDsa}
-                        className="arena-input w-full min-h-[160px] resize-y font-mono text-sm"
-                      />
-                    </TabsContent>
-                    <TabsContent value="java" className="mt-2">
-                      <Textarea
-                        value={dsaForm.boilerplate.java}
-                        onChange={(e) =>
-                          setDsaForm({
-                            ...dsaForm,
-                            boilerplate: {
-                              ...dsaForm.boilerplate,
-                              java: e.target.value,
-                            },
-                          })
-                        }
-                        placeholder="import java.util.*;&#10;&#10;public class Solution {&#10;    public static void main(String[] args) { ... }&#10;}"
-                        disabled={isCreatingDsa}
-                        className="arena-input w-full min-h-[160px] resize-y font-mono text-sm"
-                      />
-                    </TabsContent>
-                    <TabsContent value="javascript" className="mt-2">
-                      <Textarea
-                        value={dsaForm.boilerplate.javascript}
-                        onChange={(e) =>
-                          setDsaForm({
-                            ...dsaForm,
-                            boilerplate: {
-                              ...dsaForm.boilerplate,
-                              javascript: e.target.value,
-                            },
-                          })
-                        }
-                        placeholder="const readline = require('readline');&#10;// Your code here"
-                        disabled={isCreatingDsa}
-                        className="arena-input w-full min-h-[160px] resize-y font-mono text-sm"
-                      />
-                    </TabsContent>
+                    {LANGUAGES.map((lang) => (
+                      <TabsContent key={lang} value={lang} className="mt-2">
+                        <Textarea
+                          value={dsaForm.boilerplate[lang] ?? ""}
+                          onChange={(e) =>
+                            setDsaForm({
+                              ...dsaForm,
+                              boilerplate: {
+                                ...dsaForm.boilerplate,
+                                [lang]: e.target.value,
+                              },
+                            })
+                          }
+                          placeholder={BOILERPLATE_PLACEHOLDER[lang]}
+                          disabled={isCreatingDsa}
+                          className="arena-input w-full min-h-[160px] resize-y font-mono text-sm"
+                        />
+                      </TabsContent>
+                    ))}
                   </Tabs>
                 </div>
               </div>

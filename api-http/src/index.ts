@@ -12,6 +12,7 @@ import problemRoutes from "./routes/problem.routes";
 import leaderboardRoutes from "./routes/leaderboard.routes";
 import statsRoutes from "./routes/stats.routes";
 import profileRoutes from "./routes/profile.routes";
+import runRoutes from "./routes/run.routes";
 import { errorHandler } from "./middleware/error-handler";
 
 dotenv.config();
@@ -45,7 +46,8 @@ app.use("/api", submissionRoutes);
 app.use("/api/problems", problemRoutes);
 app.use("/api/contests", leaderboardRoutes);
 app.use("/api/stats", statsRoutes);
-app.use("/api", profileRoutes);
+app.use("/api/profile", profileRoutes);
+app.use("/api/run", runRoutes);
 
 app.use(errorHandler);
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

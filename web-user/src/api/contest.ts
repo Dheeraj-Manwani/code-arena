@@ -46,8 +46,13 @@ export const contestApi = {
     return res.data;
   },
 
-getContestAttemptById: async (contestId: number, attemptId: number): Promise<{ success: boolean; data: ContestAttempt }> => {
-    const res = await api.get(`/api/contests/${contestId}/attempt/${attemptId}`);
+  getContestAttemptById: async (
+    contestId: number,
+    attemptId: number,
+  ): Promise<{ success: boolean; data: ContestAttempt }> => {
+    const res = await api.get<{ success: boolean; data: ContestAttempt }>(
+      `/api/contests/${contestId}/attempt/${attemptId}`,
+    );
     return res.data;
-  }
+  },
 };

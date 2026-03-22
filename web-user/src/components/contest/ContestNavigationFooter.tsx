@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, ArrowRight, Send } from "lucide-react";
+import { Send } from "lucide-react";
 import type { ContestQuestion } from "@/schema/problem.schema";
 
 interface ContestNavigationFooterProps {
@@ -24,6 +24,7 @@ export default function ContestNavigationFooter({
   return (
     <footer className="bg-card border-t border-border px-6 py-4">
       <div className="flex items-center justify-between">
+        {/* Journey - question navigation (commented out - forward-only flow) */}
         <div className="flex items-center gap-2 flex-wrap">
           {contestQuestions.map((q, index) => {
             const attempted = isAttempted(q);
@@ -31,14 +32,13 @@ export default function ContestNavigationFooter({
               <button
                 key={index}
                 type="button"
-                onClick={() => goToQuestion(index)}
-                className={`w-8 h-8 rounded-full font-mono text-sm font-medium transition-all hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
-                  index === currentQuestionIndex
-                    ? "bg-primary text-primary-foreground arena-glow"
-                    : attempted
-                      ? "bg-arena-success/20 text-arena-success hover:bg-arena-success/30"
-                      : "bg-secondary text-muted-foreground hover:bg-secondary/80 hover:text-foreground"
-                }`}
+                onClick={() => { }}
+                className={`w-8 h-8 rounded-full font-mono text-sm font-medium transition-all hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${index === currentQuestionIndex
+                  ? "bg-primary text-primary-foreground arena-glow"
+                  : attempted
+                    ? "bg-arena-success/20 text-arena-success hover:bg-arena-success/30"
+                    : "bg-secondary text-muted-foreground hover:bg-secondary/80 hover:text-foreground"
+                  }`}
               >
                 {index + 1}
               </button>
@@ -46,8 +46,9 @@ export default function ContestNavigationFooter({
           })}
         </div>
 
-        <div className="flex items-center gap-3">
-          <Button
+        <div className="flex items-center gap-3 ml-auto">
+          {/* Previous / Next buttons (commented out - forward-only via per-question Submit) */}
+          {/* <Button
             variant="outline"
             size="lg"
             onClick={() => goToQuestion(currentQuestionIndex - 1)}
@@ -71,7 +72,15 @@ export default function ContestNavigationFooter({
               Next Question
               <ArrowRight className="h-5 w-5" />
             </Button>
-          )}
+          )} */}
+          <Button
+            onClick={onShowSubmitConfirm}
+            size="lg"
+            className="arena-glow gap-2"
+          >
+            <Send className="h-5 w-5" />
+            Submit Contest
+          </Button>
         </div>
       </div>
     </footer>

@@ -49,3 +49,53 @@ export const getContestAttemptById = async (attemptId: number) => {
         where: { id: attemptId },
     });
 };
+
+export const getInProgressAttemptByUserAndContest = async (
+    userId: number,
+    contestId: number,
+) => {
+    return await prisma.contestAttempt.findFirst({
+        where: {
+            userId,
+            contestId,
+            status: "in_progress",
+            deadlineAt: {
+                gt: new Date(),
+            },
+        },
+    });
+};
+
+export const updateCurrentProblemId = async (
+    attemptId: number,
+    userId: number,
+    contestId: number,
+    currentProblemId: number | null,
+) => {
+    return await prisma.contestAttempt.updateMany({
+        where: {
+            id: attemptId,
+            userId,
+            contestId,
+            status: "in_progress",
+        },
+        data: { currentProblemId },
+    });
+};
+
+export const markAttemptSubmitted = async (
+    attemptId: number,
+    userId: number,
+    contestId: number,
+) => {
+    const result = await prisma.contestAttempt.updateMany({
+        where: {
+            id: attemptId,
+            userId,
+            contestId,
+            status: "in_progress",
+        },
+        data: { status: "submitted" },
+    });
+    return result.count > 0;
+};

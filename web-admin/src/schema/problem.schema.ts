@@ -97,7 +97,21 @@ export const QuestionTypeEnum = z.enum(["mcq", "dsa"]);
 
 export type QuestionType = z.infer<typeof QuestionTypeEnum>;
 
-
+/** Boilerplate signature sent to backend; backend generates boilerplate from this */
+const BOILERPLATE_TYPE_KEYS = [
+  "int", "long", "double", "boolean", "string",
+  "int[]", "long[]", "double[]", "boolean[]", "string[]", "int[][]",
+  "ListNode", "TreeNode", "void", "object",
+] as const;
+const BoilerplateTypeKeyEnum = z.enum(BOILERPLATE_TYPE_KEYS);
+const BoilerplateParamSchema = z.object({ name: z.string(), type: BoilerplateTypeKeyEnum });
+const BoilerplateSignatureSchema = z.object({
+  functionName: z.string(),
+  returnType: BoilerplateTypeKeyEnum,
+  parameters: z.array(BoilerplateParamSchema),
+  className: z.string(),
+  useClassWrapper: z.boolean(),
+});
 
 export const UpdateDsaSchema = z
   .object({
@@ -158,6 +172,8 @@ export const UpdateDsaSchema = z
       .min(1, { message: "At least one test case is required" })
       .optional(),
     boilerplate: z.record(z.string(), z.string()).optional(),
+    /** When provided, backend generates boilerplate; do not send boilerplate */
+    boilerplateSignature: BoilerplateSignatureSchema.optional(),
     inputFormat: z.string().nullable().optional(),
     outputFormat: z.string().nullable().optional(),
     constraints: z.array(z.string()).optional(),
@@ -263,7 +279,9 @@ export const AddDsaSchema = z.object({
     .min(60 * 1_000, { message: "Duration must be at least 1 minute" })
     .optional(),
   testCases: AddTestCaseSchema.default([]),
-  boilerplate: z.record(z.string(), z.string()).optional().default({}),
+  /** Prefer boilerplateSignature when present (backend generates boilerplate) */
+  boilerplate: z.record(z.string(), z.string()).default({}).optional(),
+  boilerplateSignature: BoilerplateSignatureSchema.optional(),
   inputFormat: z.string().nullable().optional(),
   outputFormat: z.string().nullable().optional(),
   constraints: z.array(z.string()).optional().default([]),

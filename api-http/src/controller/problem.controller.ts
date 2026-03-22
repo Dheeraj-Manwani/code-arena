@@ -4,6 +4,8 @@ import * as problemService from "../service/problem.service";
 import { sendSuccess } from "../util/response";
 import { ProblemNotFoundError } from "../errors/problem.errors";
 import { AddMcqSchema, AddDsaSchema, UpdateMcqSchema, UpdateDsaSchema } from "../schema/problem.schema";
+import { generateUserBoilerplate, toStoredSignature } from "../util/boilerplate";
+import type { BoilerplateSignature } from "../util/boilerplate";
 
 export const getProblemById = async (req: AuthRequest, res: Response) => {
   const problemId = parseInt(String(req.params.problemId));
@@ -38,6 +40,11 @@ export const createMcqQuestion = async (req: AuthRequest, res: Response) => {
 
 export const createDsaProblem = async (req: AuthRequest, res: Response) => {
   const data = AddDsaSchema.parse(req.body);
+  if (data.boilerplateSignature == null) {
+    throw new Error("boilerplateSignature is required for DSA problems");
+  }
+  const signature = toStoredSignature(data.boilerplateSignature);
+
   const dsaProblem = await problemService.createStandaloneDsaProblem(
     {
       title: data.title,
@@ -48,7 +55,7 @@ export const createDsaProblem = async (req: AuthRequest, res: Response) => {
       memoryLimit: data.memoryLimit,
       difficulty: data.difficulty,
       maxDurationMs: data.maxDurationMs,
-      boilerplate: data.boilerplate ?? {},
+      signature,
       inputFormat: data.inputFormat ?? null,
       outputFormat: data.outputFormat ?? null,
       constraints: data.constraints ?? [],
@@ -85,7 +92,10 @@ export const updateDsaProblem = async (req: AuthRequest, res: Response) => {
     difficulty: data.difficulty,
     maxDurationMs: data.maxDurationMs,
   };
-  if (data.boilerplate !== undefined) updatePayload.boilerplate = data.boilerplate;
+
+  if (data.boilerplateSignature != null) {
+    updatePayload.signature = toStoredSignature(data.boilerplateSignature);
+  }
   if (data.inputFormat !== undefined) updatePayload.inputFormat = data.inputFormat;
   if (data.outputFormat !== undefined) updatePayload.outputFormat = data.outputFormat;
   if (data.constraints !== undefined) updatePayload.constraints = data.constraints;
@@ -108,11 +118,21 @@ export const getMcqQuestionById = async (req: AuthRequest, res: Response) => {
   return sendSuccess(res, question, 200);
 };
 
+/** Derive boilerplate from stored signature for API response (never stored). */
+function withDerivedBoilerplate<T extends { signature: unknown }>(row: T) {
+  const sig = row.signature as BoilerplateSignature | null;
+  const boilerplate =
+    sig && typeof sig === "object" && "functionName" in sig
+      ? generateUserBoilerplate(sig as BoilerplateSignature)
+      : {};
+  return { ...row, boilerplate };
+}
+
 export const getDsaProblemById = async (req: AuthRequest, res: Response) => {
   const problemId = parseInt(String(req.params.problemId));
   if (isNaN(problemId)) {
     throw new ProblemNotFoundError();
   }
   const problem = await problemService.getDsaProblemById(problemId);
-  return sendSuccess(res, problem, 200);
+  return sendSuccess(res, withDerivedBoilerplate(problem), 200);
 };

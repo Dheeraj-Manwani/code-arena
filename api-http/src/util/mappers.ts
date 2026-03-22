@@ -1,17 +1,11 @@
-import { ContestType, Contest as DBContest, Prisma, Role } from "@prisma/client";
+import { ContestType, Role } from "@prisma/client";
 import { Contest, ContestPhase, ContestWithQuestions } from "../schema/contest.schema";
-import { DsaProblem } from "../schema/problem.schema";
+import { generateUserBoilerplate } from "./boilerplate";
+import type { BoilerplateSignature } from "./boilerplate";
+import * as contestRepo from "../repositories/contest.repository";
 
-type ContestWithQuestionsDB = Prisma.ContestGetPayload<{
-    include: {
-        questions: {
-            include: {
-                mcq: true,
-                dsa: true,
-            },
-        },
-    },
-}>;
+/** Matches getContestByIdWithProblems result (dsa has signature + testCases; boilerplate derived at runtime) */
+type ContestWithQuestionsDB = NonNullable<Awaited<ReturnType<typeof contestRepo.getContestByIdWithProblems>>>;
 
 export const getContestPhase = (startTime: Date | null, endTime: Date | null): ContestPhase | undefined => {
     if (!startTime || !endTime) {
@@ -75,7 +69,7 @@ export const mapDBContestToContest = (contest: ContestWithQuestionsDB, includeQu
                 if (q.mcq) {
                     // Format MCQ question
                     const mcq = {
-                        id: q.mcq.id,
+                        id: q.id,
                         questionText: q.mcq.questionText,
                         options: Array.isArray(q.mcq.options)
                             ? q.mcq.options
@@ -94,9 +88,14 @@ export const mapDBContestToContest = (contest: ContestWithQuestionsDB, includeQu
                         mcq,
                     };
                 } else if (q.dsa) {
-                    // Format DSA problem
+                    // Format DSA problem: derive boilerplate from signature (never stored)
+                    const sig = q.dsa.signature as BoilerplateSignature | null;
+                    const boilerplate =
+                        sig && typeof sig === "object" && "functionName" in sig
+                            ? generateUserBoilerplate(sig as BoilerplateSignature)
+                            : {};
                     const dsa = {
-                        id: q.dsa.id,
+                        id: q.id,
                         title: q.dsa.title,
                         description: q.dsa.description,
                         tags: q.dsa.tags,
@@ -105,16 +104,15 @@ export const mapDBContestToContest = (contest: ContestWithQuestionsDB, includeQu
                         memoryLimit: q.dsa.memoryLimit,
                         difficulty: q.dsa.difficulty ?? undefined,
                         maxDurationMs: q.dsa.maxDurationMs ?? undefined,
-                        boilerplate: (q.dsa.boilerplate && typeof q.dsa.boilerplate === "object" && !Array.isArray(q.dsa.boilerplate))
-                            ? (q.dsa.boilerplate as Record<string, string>)
-                            : {},
+                        signature: q.dsa.signature,
+                        boilerplate,
                         inputFormat: q.dsa.inputFormat ?? null,
                         outputFormat: q.dsa.outputFormat ?? null,
                         constraints: q.dsa.constraints ?? [],
                         createdAt: q.dsa.createdAt.toISOString(),
                         updatedAt: q.dsa.updatedAt.toISOString(),
                         creatorId: q.dsa.creatorId,
-                        testCases: (q.dsa as DsaProblem).testCases.map((tc) => ({
+                        testCases: q.dsa.testCases.map((tc) => ({
                             id: tc.id,
                             input: tc.input,
                             expectedOutput: tc.expectedOutput,

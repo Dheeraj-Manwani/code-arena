@@ -1,5 +1,7 @@
 import { z } from "zod";
 import type { ContestWithQuestions } from "@/schema/contest.schema";
+import { LanguageEnum } from "@/schema/language.schema";
+import type { Language } from "@/schema/language.schema";
 
 export const SubmitMcqSchema = z.object({
   selectedOptionIndex: z.number().int().min(0),
@@ -7,7 +9,7 @@ export const SubmitMcqSchema = z.object({
 
 export const SubmitDsaSchema = z.object({
   code: z.string().min(1),
-  language: z.string().min(1),
+  language: LanguageEnum,
 });
 
 export type SubmitMcqSchemaType = z.infer<typeof SubmitMcqSchema>;
@@ -27,7 +29,7 @@ export interface DraftAnswer {
   attemptId: number;
   problemId: number;
   code?: string;
-  language?: string;
+  language?: Language;
   mcqOption?: number;
 }
 
@@ -39,6 +41,9 @@ export interface ContestAttempt {
 
   startedAt: string;
   deadlineAt: string;
+
+  /** Question/problem ID the user is currently on (UI opens this problem). */
+  currentProblemId?: number;
 
   draftAnswers: DraftAnswer[];
   contest: ContestWithQuestions;

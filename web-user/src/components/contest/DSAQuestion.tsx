@@ -1,6 +1,7 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Editor from "@monaco-editor/react";
 import type { TestCaseUI, ContestDsa } from "@/schema/problem.schema";
+import { LANGUAGE_CONFIG, type Language } from "@/schema/language.schema";
 import { Button } from "@/components/ui/button";
 import { Play, Send, Loader2, FileText, Terminal, AlertTriangle, Zap, BookOpen, Award, Clock, Database, Tag, Copy, Check } from "lucide-react";
 import { Allotment } from "allotment";
@@ -15,22 +16,18 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { TestCaseResult } from "@/schema/problem.schema";
+import { useDebouncedCallback } from "use-debounce";
 
 interface CodingQuestionProps {
   question: ContestDsa;
   code: string;
-  language: string;
+  language: Language;
   onCodeChange: (code: string) => void;
-  onLanguageChange: (language: string, boilerplate?: string) => void;
+  onLanguageChange: (language: Language, boilerplate?: string) => void;
   onSubmit: () => void;
+  isSubmitting?: boolean;
+  isLastQuestion?: boolean;
 }
-
-const languageConfig: Record<string, { label: string; monacoLang: string }> = {
-  cpp: { label: "C++", monacoLang: "cpp" },
-  java: { label: "Java", monacoLang: "java" },
-  python: { label: "Python", monacoLang: "python" },
-  javascript: { label: "JavaScript", monacoLang: "javascript" },
-};
 
 const DSAQuestion = ({
   question,
@@ -39,12 +36,31 @@ const DSAQuestion = ({
   onCodeChange,
   onLanguageChange,
   onSubmit,
+  isSubmitting = false,
+  isLastQuestion = false,
 }: CodingQuestionProps) => {
   const [customTestCases, setCustomTestCases] = useState<TestCaseUI[]>([]);
   const [testResults, setTestResults] = useState<TestCaseResult[]>([]);
   const [isRunning, setIsRunning] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [currentCode, setCurrentCode] = useState(code);
+
+  useEffect(() => {
+    setCurrentCode(code);
+  }, [code, question.id, language]);
+
+  useEffect(() => {
+    return () => {
+      debouncedCodeChange.flush();
+    };
+  }, []);
+
+  const debouncedCodeChange = useDebouncedCallback(
+    (value: string) => {
+      onCodeChange(value);
+    },
+    2000
+  );
 
   const handleAddCustomTestCase = (testCase: TestCaseUI) => {
     setCustomTestCases((prev) => [...prev, testCase]);
@@ -55,11 +71,14 @@ const DSAQuestion = ({
     setTestResults((prev) => prev.filter((r) => r.id !== id));
   };
 
-  const handleLanguageChange = (newLang: string) => {
-    onLanguageChange(newLang, question.boilerplate?.[newLang]);
+  const handleLanguageChange = (newLang: Language) => {
+    debouncedCodeChange.flush();
+    onLanguageChange(newLang);
   };
 
-  const simulateRun = useCallback(async () => {
+  const handleRun = useCallback(async () => {
+    debouncedCodeChange.flush();
+
     setIsRunning(true);
     setTestResults([]);
 
@@ -81,9 +100,7 @@ const DSAQuestion = ({
   }, [question.testCases, customTestCases]);
 
   const handleSubmit = async () => {
-    setIsSubmitting(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    setIsSubmitting(false);
+    debouncedCodeChange.flush();
     onSubmit();
   };
 
@@ -108,6 +125,11 @@ const DSAQuestion = ({
       default:
         return "text-muted-foreground bg-muted border-border";
     }
+  };
+
+  const handleCodeChange = (value: string) => {
+    setCurrentCode(value);
+    debouncedCodeChange(value);
   };
 
   return (
@@ -237,7 +259,7 @@ const DSAQuestion = ({
 
                 <section className="rounded-xl border border-border bg-card/30 overflow-hidden">
                   <div className="flex items-center gap-2 px-4 py-3 bg-muted/30 border-b border-border">
-                    <Zap className="h-4 w-4" />
+                    <Zap className="h-4 w-4 text-muted-foreground" />
                     <h3 className="font-mono text-sm font-semibold text-foreground">
                       Examples
                     </h3>
@@ -337,11 +359,11 @@ const DSAQuestion = ({
                 <div className="h-full w-full flex flex-col overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card shrink-0">
                     <Select value={language} onValueChange={handleLanguageChange}>
-                      <SelectTrigger className="w-32 h-8 text-sm">
+                      <SelectTrigger className=" h-8 text-sm">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {Object.entries(languageConfig).map(([key, config]) => (
+                        {Object.entries(LANGUAGE_CONFIG).map(([key, config]) => (
                           <SelectItem key={key} value={key}>
                             {config.label}
                           </SelectItem>
@@ -353,7 +375,7 @@ const DSAQuestion = ({
                       <Button
                         variant="secondary"
                         size="sm"
-                        onClick={simulateRun}
+                        onClick={handleRun}
                         disabled={isRunning}
                       >
                         {isRunning ? (
@@ -374,7 +396,7 @@ const DSAQuestion = ({
                         ) : (
                           <Send className="h-4 w-4 mr-2" />
                         )}
-                        Submit
+                        {isLastQuestion ? "Submit and Finish Contest" : "Submit"}
                       </Button>
                     </div>
                   </div>
@@ -382,9 +404,9 @@ const DSAQuestion = ({
                   <div className="flex-1 min-h-0 overflow-hidden">
                     <Editor
                       height="100%"
-                      language={languageConfig[language]?.monacoLang || "plaintext"}
-                      value={code}
-                      onChange={(value: string | undefined) => onCodeChange(value ?? "")}
+                      language={LANGUAGE_CONFIG[language]?.monacoLang ?? "plaintext"}
+                      value={currentCode}
+                      onChange={(value: string | undefined) => handleCodeChange(value ?? "")}
                       theme="vs-dark"
                       options={{
                         minimap: { enabled: false },
