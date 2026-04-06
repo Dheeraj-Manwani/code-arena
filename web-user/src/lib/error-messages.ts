@@ -27,6 +27,8 @@ const errorMessages = {
     "Invalid request. Please check your input and try again.",
   [ApiErrorCode.INTERNAL_SERVER_ERROR]:
     "An unexpected error occurred. Please try again later.",
+  [ApiErrorCode.RUN_EXECUTION_FAILED]:
+    "Code execution failed. Check your code or try again.",
 
   // Error not required
   [ApiErrorCode.REFRESH_TOKEN_NOT_FOUND]: undefined,

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ContestQuestion } from "./problem.schema";
+import { BoilerplateSignatureSchema, type ContestQuestion } from "./problem.schema";
 import { ContestWithQuestions } from "./contest.schema";
 import { LanguageEnum, type Language } from "./language.schema";
 
@@ -21,8 +21,22 @@ export const RunCodeSchema = SubmitDsaSchema.extend({
   memoryLimit: z.number().int().min(1),
 });
 
+/** POST /api/run — optional signature + testCases to wrap code with judge harness (same as submissions). */
+export const RunCodeBodySchema = SubmitDsaSchema.extend({
+  signature: BoilerplateSignatureSchema.optional(),
+  testCases: z
+    .array(
+      z.object({
+        input: z.string(),
+        expectedOutput: z.string(),
+      })
+    )
+    .optional(),
+});
+
 export type SubmitMcqSchemaType = z.infer<typeof SubmitMcqSchema>;
 export type SubmitDsaSchemaType = z.infer<typeof SubmitDsaSchema>;
+export type RunCodeBodySchemaType = z.infer<typeof RunCodeBodySchema>;
 
 export const AttemptStatusEnum = z.enum(["in_progress", "submitted", "timed_out", "abandoned"]);
 export type AttemptStatus = z.infer<typeof AttemptStatusEnum>;

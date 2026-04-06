@@ -14,8 +14,10 @@ import {
   SubmitDsaSchemaType,
   ContestAttempt,
 } from "../schema/submission.schema";
-import { LanguageEnum } from "../schema/language.schema";
-import { executeCode } from "../util/codeExecutor";
+import { LanguageEnum, type Language } from "../schema/language.schema";
+import { enqueueJudgeJob } from "../lib/judgeQueue";
+import type { BoilerplateSignature } from "../util/boilerplate/types";
+import type { SerializedTestCase } from "../util/boilerplate";
 import { Contest, ContestType, Role } from "@prisma/client";
 import { AttemptLimitReachedError, ContestNotFoundError } from "../errors/contest.errors";
 import { mapDBContestToContest } from "../util/mappers";
@@ -222,34 +224,37 @@ export const submitDsa = async (
     throw new AlreadySubmittedError();
   }
 
-  const executionResult = await executeCode(
-    code,
-    language,
-    problem.testCases.map((tc) => ({
-      input: tc.input,
-      expectedOutput: tc.expectedOutput,
-    })),
-    problem.timeLimit,
-    problem.memoryLimit,
-    problem.points
-  );
+  const testCases: SerializedTestCase[] = problem.testCases.map((tc) => ({
+    input: tc.input,
+    expectedOutput: tc.expectedOutput,
+  }));
 
-  const pointsEarned = Math.floor(
-    (executionResult.testCasesPassed / executionResult.totalTestCases) *
-    problem.points
-  );
-
-  await submissionRepo.createDsaSubmission({
+  const submission = await submissionRepo.createDsaSubmission({
     userId,
     problemId: dsaId,
     contestId,
     attemptId: attempt.id,
     code,
     language,
-    status: executionResult.status,
-    pointsEarned,
-    testCasesPassed: executionResult.testCasesPassed,
-    totalTestCases: executionResult.totalTestCases,
+    status: "pending",
+    pointsEarned: 0,
+    testCasesPassed: 0,
+    totalTestCases: testCases.length,
+  });
+
+  const signature = problem.signature as unknown as BoilerplateSignature;
+
+  await enqueueJudgeJob({
+    dsaSubmissionId: submission.id,
+    attemptId: attempt.id,
+    userId,
+    problemId: dsaId,
+    contestId,
+    language: language as Language,
+    userCode: code,
+    signature,
+    testCases,
+    totalPoints: problem.points,
   });
 
   const nextContestQuestionId = await contestRepo.getNextContestQuestionIdAfter(
@@ -264,10 +269,10 @@ export const submitDsa = async (
   );
 
   return {
-    status: executionResult.status,
-    pointsEarned,
-    testCasesPassed: executionResult.testCasesPassed,
-    totalTestCases: executionResult.totalTestCases,
+    status: "pending" as const,
+    pointsEarned: 0,
+    testCasesPassed: 0,
+    totalTestCases: testCases.length,
   };
 };
 

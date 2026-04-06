@@ -17,6 +17,10 @@ import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { TestCaseResult } from "@/schema/problem.schema";
 import { useDebouncedCallback } from "use-debounce";
+import { runApi } from "@/api/run";
+import { useMutation } from "@tanstack/react-query";
+import type { RunCodeBodySchemaType } from "@/schema/submission.schema";
+import { harnessStdoutToTestResults } from "@/lib/runStdout";
 
 interface CodingQuestionProps {
   question: ContestDsa;
@@ -41,9 +45,12 @@ const DSAQuestion = ({
 }: CodingQuestionProps) => {
   const [customTestCases, setCustomTestCases] = useState<TestCaseUI[]>([]);
   const [testResults, setTestResults] = useState<TestCaseResult[]>([]);
-  const [isRunning, setIsRunning] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [currentCode, setCurrentCode] = useState(code);
+
+  const runCodeMutation = useMutation({
+    mutationFn: runApi.runCode,
+  });
 
   useEffect(() => {
     setCurrentCode(code);
@@ -78,26 +85,34 @@ const DSAQuestion = ({
 
   const handleRun = useCallback(async () => {
     debouncedCodeChange.flush();
-
-    setIsRunning(true);
     setTestResults([]);
-
-    const allTestCases = [...(question.testCases || []), ...customTestCases];
-    const results: TestCaseResult[] = [];
-
-    for (const tc of allTestCases) {
-      await new Promise((resolve) => setTimeout(resolve, 300 + Math.random() * 400));
-      const passed = Math.random() > 0.3;
-      results.push({
-        id: tc.id,
-        passed,
-        actualOutput: passed ? tc.expectedOutput : "Wrong output",
-      });
-      setTestResults([...results]);
+    const payload: RunCodeBodySchemaType = {
+      code: currentCode,
+      language,
+    };
+    if (question.signature && question.testCases.length > 0) {
+      payload.signature = question.signature as NonNullable<
+        RunCodeBodySchemaType["signature"]
+      >;
+      payload.testCases = question.testCases.map((tc) => ({
+        input: tc.input,
+        expectedOutput: tc.expectedOutput,
+      }));
     }
-
-    setIsRunning(false);
-  }, [question.testCases, customTestCases]);
+    const data = await runCodeMutation.mutateAsync(payload);
+    if (question.testCases.length > 0) {
+      setTestResults(
+        harnessStdoutToTestResults(data.stdout, question.testCases)
+      );
+    }
+  }, [
+    currentCode,
+    language,
+    debouncedCodeChange,
+    runCodeMutation,
+    question.signature,
+    question.testCases,
+  ]);
 
   const handleSubmit = async () => {
     debouncedCodeChange.flush();
@@ -376,9 +391,9 @@ const DSAQuestion = ({
                         variant="secondary"
                         size="sm"
                         onClick={handleRun}
-                        disabled={isRunning}
+                        disabled={runCodeMutation.isPending}
                       >
-                        {isRunning ? (
+                        {runCodeMutation.isPending ? (
                           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                         ) : (
                           <Play className="h-4 w-4 mr-2" />
@@ -432,7 +447,7 @@ const DSAQuestion = ({
                     onAddCustomTestCase={handleAddCustomTestCase}
                     onRemoveCustomTestCase={handleRemoveCustomTestCase}
                     results={testResults}
-                    isRunning={isRunning}
+                    isRunning={runCodeMutation.isPending}
                   />
                 </div>
               </Allotment.Pane>

@@ -1,7 +1,7 @@
 import { z } from "zod";
-import type { ContestWithQuestions } from "@/schema/contest.schema";
-import { LanguageEnum } from "@/schema/language.schema";
-import type { Language } from "@/schema/language.schema";
+import type { ContestQuestion } from "./problem.schema";
+import { ContestWithQuestions } from "./contest.schema";
+import { LanguageEnum, type Language } from "./language.schema";
 
 export const SubmitMcqSchema = z.object({
   selectedOptionIndex: z.number().int().min(0),
@@ -12,35 +12,17 @@ export const SubmitDsaSchema = z.object({
   language: LanguageEnum,
 });
 
-export type SubmitMcqSchemaType = z.infer<typeof SubmitMcqSchema>;
-export type SubmitDsaSchemaType = z.infer<typeof SubmitDsaSchema>;
-
-export const RunCodeBodySchema = SubmitDsaSchema.extend({
-  signature: z
-    .object({
-      functionName: z.string(),
-      returnType: z.string(),
-      parameters: z.array(
-        z.object({
-          name: z.string(),
-          type: z.string(),
-        })
-      ),
-      className: z.string(),
-      useClassWrapper: z.boolean(),
-    })
-    .optional(),
-  testCases: z
-    .array(
-      z.object({
-        input: z.string(),
-        expectedOutput: z.string(),
-      })
-    )
-    .optional(),
+export const RunCodeSchema = SubmitDsaSchema.extend({
+  testCases: z.array(z.object({
+    input: z.string().min(1),
+    expectedOutput: z.string().min(1),
+  })),
+  timeLimit: z.number().int().min(1),
+  memoryLimit: z.number().int().min(1),
 });
 
-export type RunCodeBodySchemaType = z.infer<typeof RunCodeBodySchema>;
+export type SubmitMcqSchemaType = z.infer<typeof SubmitMcqSchema>;
+export type SubmitDsaSchemaType = z.infer<typeof SubmitDsaSchema>;
 
 export const AttemptStatusEnum = z.enum(["in_progress", "submitted", "timed_out", "abandoned"]);
 export type AttemptStatus = z.infer<typeof AttemptStatusEnum>;
@@ -56,6 +38,7 @@ export interface DraftAnswer {
   attemptId: number;
   problemId: number;
   code?: string;
+  /** Validated language from DB; may be undefined if stored value is invalid */
   language?: Language;
   mcqOption?: number;
 }
