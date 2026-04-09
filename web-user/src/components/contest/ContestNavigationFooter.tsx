@@ -7,9 +7,10 @@ interface ContestNavigationFooterProps {
   currentQuestionIndex: number;
   goToQuestion: (index: number) => void;
   isAttempted: (q: ContestQuestion) => boolean;
-  isLastQuestion: boolean;
+  dsaStatuses?: Partial<
+    Record<number, "pending" | "accepted" | "wrong_answer" | "time_limit_exceeded" | "runtime_error">
+  >;
   onShowSubmitConfirm: () => void;
-  onNext: () => void;
 }
 
 export default function ContestNavigationFooter({
@@ -17,9 +18,8 @@ export default function ContestNavigationFooter({
   currentQuestionIndex,
   goToQuestion,
   isAttempted,
-  isLastQuestion,
+  dsaStatuses = {},
   onShowSubmitConfirm,
-  onNext,
 }: ContestNavigationFooterProps) {
   return (
     <footer className="bg-card border-t border-border px-6 py-4">
@@ -28,20 +28,43 @@ export default function ContestNavigationFooter({
         <div className="flex items-center gap-2 flex-wrap">
           {contestQuestions.map((q, index) => {
             const attempted = isAttempted(q);
+            const dsaStatus = q.type === "dsa" ? dsaStatuses[q.id] : undefined;
+            const statusClassName =
+              dsaStatus === "accepted"
+                ? "bg-arena-success/20 text-arena-success"
+                : dsaStatus === "wrong_answer" ||
+                    dsaStatus === "runtime_error" ||
+                    dsaStatus === "time_limit_exceeded"
+                  ? "bg-destructive/15 text-destructive"
+                  : dsaStatus === "pending"
+                    ? "bg-arena-warning/20 text-arena-warning"
+                    : "";
             return (
-              <button
-                key={index}
-                type="button"
-                onClick={() => { }}
-                className={`w-8 h-8 rounded-full font-mono text-sm font-medium transition-all hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${index === currentQuestionIndex
+              <div key={q.id} className="relative">
+                <button
+                  type="button"
+                  onClick={() => goToQuestion(index)}
+                  className={`w-8 h-8 rounded-full font-mono text-sm font-medium transition-all hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${index === currentQuestionIndex
                   ? "bg-primary text-primary-foreground arena-glow"
                   : attempted
                     ? "bg-arena-success/20 text-arena-success hover:bg-arena-success/30"
                     : "bg-secondary text-muted-foreground hover:bg-secondary/80 hover:text-foreground"
                   }`}
-              >
-                {index + 1}
-              </button>
+                >
+                  {index + 1}
+                </button>
+                {dsaStatus && (
+                  <span
+                    className={`absolute -top-2 -right-2 rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none ${statusClassName}`}
+                  >
+                    {dsaStatus === "accepted"
+                      ? "A"
+                      : dsaStatus === "pending"
+                        ? "P"
+                        : "W"}
+                  </span>
+                )}
+              </div>
             );
           })}
         </div>

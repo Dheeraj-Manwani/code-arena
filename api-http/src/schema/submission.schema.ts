@@ -12,17 +12,8 @@ export const SubmitDsaSchema = z.object({
   language: LanguageEnum,
 });
 
-export const RunCodeSchema = SubmitDsaSchema.extend({
-  testCases: z.array(z.object({
-    input: z.string().min(1),
-    expectedOutput: z.string().min(1),
-  })),
-  timeLimit: z.number().int().min(1),
-  memoryLimit: z.number().int().min(1),
-});
-
 /** POST /api/run — optional signature + testCases to wrap code with judge harness (same as submissions). */
-export const RunCodeBodySchema = SubmitDsaSchema.extend({
+export const RunCodeSchema = SubmitDsaSchema.extend({
   signature: BoilerplateSignatureSchema.optional(),
   testCases: z
     .array(
@@ -34,8 +25,11 @@ export const RunCodeBodySchema = SubmitDsaSchema.extend({
     .optional(),
 });
 
+export const RunCodeBodySchema = RunCodeSchema;
+
 export type SubmitMcqSchemaType = z.infer<typeof SubmitMcqSchema>;
 export type SubmitDsaSchemaType = z.infer<typeof SubmitDsaSchema>;
+export type RunCodeSchemaType = z.infer<typeof RunCodeSchema>;
 export type RunCodeBodySchemaType = z.infer<typeof RunCodeBodySchema>;
 
 export const AttemptStatusEnum = z.enum(["in_progress", "submitted", "timed_out", "abandoned"]);

@@ -32,6 +32,8 @@ import ContestNavigationFooter from "./ContestNavigationFooter";
 import { Allotment } from "allotment";
 import ContestLeaderboardPanel from "./ContestLeaderboardPanel";
 import { Loader } from "../Loader";
+import { useAuthStore } from "@/stores/auth.store";
+import { contestWebSocket } from "@/lib/websocket";
 
 const LEAVE_MESSAGE =
   "Are you sure you want to leave? Your progress may be lost.";
@@ -53,7 +55,14 @@ const ContestPage = () => {
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
   const [showRankUpdatedTooltip, setShowRankUpdatedTooltip] = useState(false);
+  const [dsaStatusByQuestionId, setDsaStatusByQuestionId] = useState<
+    Partial<
+      Record<number, "pending" | "accepted" | "wrong_answer" | "time_limit_exceeded" | "runtime_error">
+    >
+  >({});
+  const [, setQuestionIdBySubmissionId] = useState<Record<number, number>>({});
   const [startTime] = useState(Date.now());
+  const authUserId = useAuthStore((state) => state.user?.id ?? null);
 
   const {
     _hasHydrated,
@@ -222,6 +231,32 @@ const ContestPage = () => {
     const ok = window.confirm(LEAVE_MESSAGE);
     ok ? blocker.proceed() : blocker.reset();
   }, [blocker.state]);
+
+  useEffect(() => {
+    contestWebSocket.connect(contestId);
+    const unsubscribe = contestWebSocket.onSubmissionResult((event) => {
+      if (event.contestId !== contestId || authUserId == null || event.userId !== authUserId) {
+        return;
+      }
+
+      setQuestionIdBySubmissionId((current) => {
+        const questionId = current[event.dsaSubmissionId];
+        if (!questionId) {
+          return current;
+        }
+        setDsaStatusByQuestionId((prev) => ({
+          ...prev,
+          [questionId]: event.status,
+        }));
+        return current;
+      });
+    });
+
+    return () => {
+      unsubscribe();
+      contestWebSocket.disconnect();
+    };
+  }, [authUserId, contestId]);
 
   useEffect(() => {
     if (isError) {
@@ -440,12 +475,31 @@ const ContestPage = () => {
     }
 
     try {
-      await submitDsaMutation.mutateAsync({
+      const response = await submitDsaMutation.mutateAsync({
         contestId,
         attemptId,
         problemId: currentQuestion.id,
         data: { code, language },
       });
+      const payload = response as {
+        data?: {
+          dsaSubmissionId?: number;
+        };
+      };
+      const dsaSubmissionId = payload.data?.dsaSubmissionId;
+
+      setDsaStatusByQuestionId((prev) => ({
+        ...prev,
+        [currentQuestion.id]: "pending",
+      }));
+
+      if (typeof dsaSubmissionId === "number") {
+        setQuestionIdBySubmissionId((prev) => ({
+          ...prev,
+          [dsaSubmissionId]: currentQuestion.id,
+        }));
+      }
+
       markSubmittedStore(currentQuestion.id);
       setShowRankUpdatedTooltip(true);
       toast.success("Solution submitted!");
@@ -462,14 +516,6 @@ const ContestPage = () => {
     } catch {
       toast.error("Unable to submit solution, please retry.");
     }
-  };
-
-  const handleNext = () => {
-    if (isLastQuestion) {
-      setShowSubmitConfirm(true);
-      return;
-    }
-    setCurrentQuestionIndex(currentQuestionIndex + 1);
   };
 
   const handleSubmitContest = async () => {
@@ -625,9 +671,8 @@ const ContestPage = () => {
         currentQuestionIndex={currentQuestionIndex}
         goToQuestion={goToQuestion}
         isAttempted={isAttempted}
-        isLastQuestion={isLastQuestion}
+        dsaStatuses={dsaStatusByQuestionId}
         onShowSubmitConfirm={() => setShowSubmitConfirm(true)}
-        onNext={handleNext}
       /> */}
 
       <ContestSubmitDialog

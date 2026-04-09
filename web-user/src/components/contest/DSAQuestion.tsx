@@ -18,9 +18,31 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { TestCaseResult } from "@/schema/problem.schema";
 import { useDebouncedCallback } from "use-debounce";
 import { runApi } from "@/api/run";
+import type { RunCodeApiResult } from "@/api/run";
 import { useMutation } from "@tanstack/react-query";
 import type { RunCodeBodySchemaType } from "@/schema/submission.schema";
 import { harnessStdoutToTestResults } from "@/lib/runStdout";
+
+function formatTestCaseInput(
+  input: string,
+  signature?: { parameters?: Array<{ name: string; type: string }> }
+): string {
+  if (!signature?.parameters?.length) return input;
+  try {
+    const parsed = JSON.parse(input);
+    if (!Array.isArray(parsed)) return input;
+    return parsed
+      .map((v: unknown, i: number) => {
+        const param = signature.parameters![i];
+        const name = param?.name || `arg${i}`;
+        const val = typeof v === "string" ? v : JSON.stringify(v);
+        return `${name} = ${val}`;
+      })
+      .join("\n");
+  } catch {
+    return input;
+  }
+}
 
 interface CodingQuestionProps {
   question: ContestDsa;
@@ -47,6 +69,12 @@ const DSAQuestion = ({
   const [testResults, setTestResults] = useState<TestCaseResult[]>([]);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [currentCode, setCurrentCode] = useState(code);
+  const [runOutput, setRunOutput] = useState<{
+    stdout?: string | null;
+    stderr?: string | null;
+    status?: { id: number; description: string };
+    executionTime?: number | null;
+  } | null>(null);
 
   const runCodeMutation = useMutation({
     mutationFn: runApi.runCode,
@@ -86,6 +114,7 @@ const DSAQuestion = ({
   const handleRun = useCallback(async () => {
     debouncedCodeChange.flush();
     setTestResults([]);
+    setRunOutput(null);
     const payload: RunCodeBodySchemaType = {
       code: currentCode,
       language,
@@ -100,6 +129,13 @@ const DSAQuestion = ({
       }));
     }
     const data = await runCodeMutation.mutateAsync(payload);
+    const runData = data as RunCodeApiResult;
+    setRunOutput({
+      stdout: runData.stdout,
+      stderr: runData.stderr,
+      status: runData.status,
+      executionTime: runData.executionTime,
+    });
     if (question.testCases.length > 0) {
       setTestResults(
         harnessStdoutToTestResults(data.stdout, question.testCases)
@@ -318,7 +354,7 @@ const DSAQuestion = ({
                                 </Tooltip>
                               </div>
                               <pre className="font-mono text-sm text-foreground bg-muted/30 rounded-md p-3 overflow-x-auto">
-                                {tc.input}
+                                {formatTestCaseInput(tc.input, question.signature as { parameters?: Array<{ name: string; type: string }> })}
                               </pre>
                             </div>
                             <div className="p-4">
@@ -448,6 +484,8 @@ const DSAQuestion = ({
                     onRemoveCustomTestCase={handleRemoveCustomTestCase}
                     results={testResults}
                     isRunning={runCodeMutation.isPending}
+                    signature={question.signature as { parameters?: Array<{ name: string; type: string }> }}
+                    runOutput={runOutput}
                   />
                 </div>
               </Allotment.Pane>

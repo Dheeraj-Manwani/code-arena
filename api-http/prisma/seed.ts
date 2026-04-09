@@ -89,8 +89,8 @@ export const dsaProblems = [
       returnType: "int[]"
     }),
     testCases: [
-      { input: "[2,7,11,15]\n9", expectedOutput: "[0,1]", isHidden: false },
-      { input: "[3,3]\n6", expectedOutput: "[0,1]", isHidden: true }
+      { input: "[[2,7,11,15],9]", expectedOutput: "[0,1]", isHidden: false },
+      { input: "[[3,3],6]", expectedOutput: "[0,1]", isHidden: true }
     ]
   },
 
@@ -108,7 +108,7 @@ export const dsaProblems = [
       returnType: "int"
     }),
     testCases: [
-      { input: "[-2,1,-3,4,-1,2,1,-5,4]", expectedOutput: "6", isHidden: false }
+      { input: "[[-2,1,-3,4,-1,2,1,-5,4]]", expectedOutput: "6", isHidden: false }
     ]
   },
 
@@ -129,7 +129,7 @@ export const dsaProblems = [
       returnType: "void"
     }),
     testCases: [
-      { input: "[1,2,3,4,5,6,7]\n3", expectedOutput: "[5,6,7,1,2,3,4]", isHidden: false }
+      { input: "[[1,2,3,4,5,6,7],3]", expectedOutput: "[5,6,7,1,2,3,4]", isHidden: false }
     ]
   },
 
@@ -147,8 +147,8 @@ export const dsaProblems = [
       returnType: "boolean"
     }),
     testCases: [
-      { input: "()[]{}", expectedOutput: "true", isHidden: false },
-      { input: "(]", expectedOutput: "false", isHidden: true }
+      { input: "[\"()[]{}\"]", expectedOutput: "true", isHidden: false },
+      { input: "[\"(]\"]", expectedOutput: "false", isHidden: true }
     ]
   },
 
@@ -166,7 +166,7 @@ export const dsaProblems = [
       returnType: "int"
     }),
     testCases: [
-      { input: "abcabcbb", expectedOutput: "3", isHidden: false }
+      { input: "[\"abcabcbb\"]", expectedOutput: "3", isHidden: false }
     ]
   },
 
@@ -184,7 +184,7 @@ export const dsaProblems = [
       returnType: "ListNode"
     }),
     testCases: [
-      { input: "[1,2,3,4,5]", expectedOutput: "[5,4,3,2,1]", isHidden: false }
+      { input: "[[1,2,3,4,5]]", expectedOutput: "[5,4,3,2,1]", isHidden: false }
     ]
   },
 
@@ -202,7 +202,7 @@ export const dsaProblems = [
       returnType: "boolean"
     }),
     testCases: [
-      { input: "[3,2,0,-4]\npos=1", expectedOutput: "true", isHidden: false }
+      { input: "[[3,2,0,-4],1]", expectedOutput: "true", isHidden: false }
     ]
   },
 
@@ -220,7 +220,7 @@ export const dsaProblems = [
       returnType: "int[][]"
     }),
     testCases: [
-      { input: "[3,9,20,null,null,15,7]", expectedOutput: "[[3],[9,20],[15,7]]", isHidden: false }
+      { input: "[[3,9,20,null,null,15,7]]", expectedOutput: "[[3],[9,20],[15,7]]", isHidden: false }
     ]
   },
 
@@ -242,7 +242,7 @@ export const dsaProblems = [
       returnType: "TreeNode"
     }),
     testCases: [
-      { input: "[6,2,8,0,4,7,9]\n2\n8", expectedOutput: "6", isHidden: false }
+      { input: "[[6,2,8,0,4,7,9],2,8]", expectedOutput: "6", isHidden: false }
     ]
   },
 
@@ -260,7 +260,7 @@ export const dsaProblems = [
       returnType: "int"
     }),
     testCases: [
-      { input: "[[1,1,0],[0,1,0],[1,0,1]]", expectedOutput: "3", isHidden: false }
+      { input: "[[[1,1,0],[0,1,0],[1,0,1]]]", expectedOutput: "3", isHidden: false }
     ]
   },
 
@@ -278,7 +278,7 @@ export const dsaProblems = [
       returnType: "int"
     }),
     testCases: [
-      { input: "5", expectedOutput: "8", isHidden: false }
+      { input: "[5]", expectedOutput: "8", isHidden: false }
     ]
   },
 
@@ -299,7 +299,7 @@ export const dsaProblems = [
       returnType: "int"
     }),
     testCases: [
-      { input: "[1,2,5]\n11", expectedOutput: "3", isHidden: false }
+      { input: "[[1,2,5],11]", expectedOutput: "3", isHidden: false }
     ]
   },
 
@@ -317,7 +317,7 @@ export const dsaProblems = [
       returnType: "int"
     }),
     testCases: [
-      { input: "[10,9,2,5,3,7,101,18]", expectedOutput: "4", isHidden: false }
+      { input: "[[10,9,2,5,3,7,101,18]]", expectedOutput: "4", isHidden: false }
     ]
   },
 
@@ -338,7 +338,7 @@ export const dsaProblems = [
       returnType: "int"
     }),
     testCases: [
-      { input: "horse\nros", expectedOutput: "3", isHidden: false }
+      { input: "[\"horse\",\"ros\"]", expectedOutput: "3", isHidden: false }
     ]
   },
 
@@ -358,7 +358,7 @@ export const dsaProblems = [
       useClassWrapper: true,
     }),
     testCases: [
-      { input: "LRUCache(2)\nput(1,1)\nput(2,2)\nget(1)", expectedOutput: "1", isHidden: false }
+      { input: "[2]", expectedOutput: "1", isHidden: false }
     ]
   }
 ];

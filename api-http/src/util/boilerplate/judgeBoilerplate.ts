@@ -448,6 +448,38 @@ const judgeBuilders: Record<
 };
 
 /**
+ * Remove user debug logging so it does not pollute judge stdout parsing.
+ * Keep harness marker logs intact (they are emitted outside user code).
+ */
+function stripUserLogging(language: Language, userCode: string): string {
+  const lines = userCode.split("\n");
+
+  const filtered = lines.filter((line) => {
+    const text = line.trim();
+
+    if (language === "js") {
+      return !/\bconsole\.(log|info|debug|warn|error)\s*\(/.test(text);
+    }
+
+    if (language === "python") {
+      return !/^print\s*\(/.test(text);
+    }
+
+    if (language === "cpp") {
+      return !/\b(?:std::)?(?:cout|cerr|clog)\s*<</.test(text);
+    }
+
+    if (language === "java") {
+      return !/\bSystem\.out\.(?:print|println|printf)\s*\(/.test(text);
+    }
+
+    return true;
+  });
+
+  return filtered.join("\n");
+}
+
+/**
  * Generate full judge program for each language: injects user code, embeds test cases,
  * runs tests, and emits per-testcase markers only. Verdicts are computed by the worker.
  */
@@ -459,7 +491,8 @@ export function generateJudgeBoilerplate(
   const result: Record<string, string> = {};
   for (const lang of LANGUAGES) {
     const harness = judgeBuilders[lang](signature, testCases);
-    result[lang] = harness.replace(USER_CODE_PLACEHOLDER, userCode.trim());
+    const sanitizedUserCode = stripUserLogging(lang, userCode).trim();
+    result[lang] = harness.replace(USER_CODE_PLACEHOLDER, sanitizedUserCode);
   }
   return result as Record<Language, string>;
 }

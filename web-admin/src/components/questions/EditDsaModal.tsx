@@ -31,9 +31,50 @@ import {
 
 interface TestCase {
   id: string;
-  input: string;
+  inputs: string[];
   expectedOutput: string;
   isHidden: boolean;
+}
+
+function getParamPlaceholder(type: BoilerplateTypeKey): string {
+  switch (type) {
+    case "int": case "long": return "e.g. 9";
+    case "double": return "e.g. 3.14";
+    case "boolean": return "true or false";
+    case "string": return "e.g. hello world";
+    case "int[]": case "long[]": return "e.g. [1,2,3,4]";
+    case "double[]": return "e.g. [1.0,2.5]";
+    case "boolean[]": return "e.g. [true,false]";
+    case "string[]": return 'e.g. ["a","b"]';
+    case "int[][]": return "e.g. [[1,2],[3,4]]";
+    default: return "Enter value...";
+  }
+}
+
+function parseParamValue(raw: string, type: BoilerplateTypeKey): unknown {
+  const trimmed = raw.trim();
+  if (type === "string") return trimmed;
+  if (type === "boolean") return trimmed === "true";
+  try { return JSON.parse(trimmed); } catch { return trimmed; }
+}
+
+function serializeTestCaseInputs(inputs: string[], paramTypes: BoilerplateTypeKey[]): string {
+  const values = inputs.map((raw, i) => parseParamValue(raw, paramTypes[i] || "string"));
+  return JSON.stringify(values);
+}
+
+function parseJsonArrayToInputs(jsonStr: string, paramCount: number): string[] {
+  try {
+    const parsed = JSON.parse(jsonStr);
+    if (Array.isArray(parsed)) {
+      const inputs = parsed.map((v: unknown) => typeof v === "string" ? v : JSON.stringify(v));
+      while (inputs.length < paramCount) inputs.push("");
+      return inputs;
+    }
+    return [typeof parsed === "string" ? parsed : JSON.stringify(parsed)];
+  } catch {
+    return [jsonStr];
+  }
 }
 
 interface EditDsaModalProps {
@@ -112,10 +153,13 @@ export const EditDsaModal = ({
             };
           };
           if (fullProblem?.testCases && fullProblem.testCases.length > 0) {
+            const sigParams = Array.isArray(fullProblem.signature?.parameters)
+              ? fullProblem.signature!.parameters.length
+              : 1;
             setTestCases(
               fullProblem.testCases.map((tc, i) => ({
                 id: tc.id?.toString() ?? String(i),
-                input: tc.input || "",
+                inputs: parseJsonArrayToInputs(tc.input || "[]", sigParams),
                 expectedOutput: tc.expectedOutput || "",
                 isHidden: tc.isHidden || false,
               }))
@@ -160,12 +204,25 @@ export const EditDsaModal = ({
     }
   }, [problem, isOpen]);
 
+  const editParamCount = boilerplateSignature.parameters.length;
+
+  useEffect(() => {
+    setTestCases((prev) =>
+      prev.map((tc) => {
+        const newInputs = [...tc.inputs];
+        while (newInputs.length < editParamCount) newInputs.push("");
+        if (newInputs.length > editParamCount) newInputs.length = editParamCount;
+        return { ...tc, inputs: newInputs };
+      })
+    );
+  }, [editParamCount]);
+
   const addTestCase = () => {
     setTestCases([
       ...testCases,
       {
         id: Date.now().toString(),
-        input: "",
+        inputs: Array(editParamCount).fill(""),
         expectedOutput: "",
         isHidden: false,
       },
@@ -178,9 +235,29 @@ export const EditDsaModal = ({
     }
   };
 
+  const updateTestCaseInput = (
+    id: string,
+    paramIndex: number,
+    value: string
+  ) => {
+    setTestCases(
+      testCases.map((tc) =>
+        tc.id === id
+          ? { ...tc, inputs: tc.inputs.map((v, j) => (j === paramIndex ? value : v)) }
+          : tc
+      )
+    );
+    const tcIndex = testCases.findIndex((tc) => tc.id === id);
+    if (errors[`testCases.${tcIndex}.input`]) {
+      const newErrors = { ...errors };
+      delete newErrors[`testCases.${tcIndex}.input`];
+      setErrors(newErrors);
+    }
+  };
+
   const updateTestCase = (
     id: string,
-    field: keyof TestCase,
+    field: "expectedOutput" | "isHidden",
     value: string | boolean
   ) => {
     setTestCases(
@@ -262,11 +339,16 @@ export const EditDsaModal = ({
         parameters: boilerplateSignature.parameters.filter((p) => p.name.trim() !== ""),
       },
       ...(testCases.length > 0 && {
-        testCases: testCases.map((tc) => ({
-          input: tc.input.trim(),
-          expectedOutput: tc.expectedOutput.trim(),
-          isHidden: tc.isHidden,
-        })),
+        testCases: testCases.map((tc) => {
+          const filteredParams = boilerplateSignature.parameters.filter((p) => p.name.trim() !== "");
+          const paramTypes = filteredParams.map((p) => p.type);
+          const filteredInputs = tc.inputs.filter((_, i) => boilerplateSignature.parameters[i]?.name.trim() !== "");
+          return {
+            input: serializeTestCaseInputs(filteredInputs, paramTypes),
+            expectedOutput: tc.expectedOutput.trim(),
+            isHidden: tc.isHidden,
+          };
+        }),
       }),
     };
 
@@ -828,24 +910,33 @@ export const EditDsaModal = ({
                         </button>
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-3">
                       <div>
-                        <Label className="text-xs text-muted-foreground">
-                          Input
+                        <Label className="text-xs text-muted-foreground mb-1 block">
+                          Input Parameters
                         </Label>
-                        <Textarea
-                          value={tc.input}
-                          onChange={(e) =>
-                            updateTestCase(tc.id, "input", e.target.value)
-                          }
-                          placeholder="Enter input..."
-                          disabled={isUpdating}
-                          className={cn(
-                            "arena-input w-full font-mono text-sm h-24",
-                            errors[`testCases.${index}.input`] &&
-                            "border-destructive"
-                          )}
-                        />
+                        <div className="space-y-2">
+                          {boilerplateSignature.parameters.map((param, pIdx) => (
+                            <div key={pIdx} className="flex items-center gap-2">
+                              <span className="text-xs font-mono text-muted-foreground w-24 shrink-0 truncate" title={`${param.name || `arg${pIdx}`} (${param.type})`}>
+                                {param.name || `arg${pIdx}`}
+                                <span className="text-muted-foreground/60 ml-1">({param.type})</span>
+                              </span>
+                              <Input
+                                value={tc.inputs[pIdx] ?? ""}
+                                onChange={(e) =>
+                                  updateTestCaseInput(tc.id, pIdx, e.target.value)
+                                }
+                                placeholder={getParamPlaceholder(param.type)}
+                                disabled={isUpdating}
+                                className={cn(
+                                  "arena-input flex-1 font-mono text-sm",
+                                  errors[`testCases.${index}.input`] && "border-destructive"
+                                )}
+                              />
+                            </div>
+                          ))}
+                        </div>
                         {errors[`testCases.${index}.input`] && (
                           <p className="text-xs text-destructive mt-1">
                             {errors[`testCases.${index}.input`]}
@@ -856,19 +947,15 @@ export const EditDsaModal = ({
                         <Label className="text-xs text-muted-foreground">
                           Expected Output
                         </Label>
-                        <Textarea
+                        <Input
                           value={tc.expectedOutput}
                           onChange={(e) =>
-                            updateTestCase(
-                              tc.id,
-                              "expectedOutput",
-                              e.target.value
-                            )
+                            updateTestCase(tc.id, "expectedOutput", e.target.value)
                           }
-                          placeholder="Enter expected output..."
+                          placeholder="e.g. [0,1] or 42 or true"
                           disabled={isUpdating}
                           className={cn(
-                            "arena-input w-full font-mono text-sm h-24",
+                            "arena-input w-full font-mono text-sm",
                             errors[`testCases.${index}.expectedOutput`] &&
                             "border-destructive"
                           )}

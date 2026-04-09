@@ -1,5 +1,9 @@
 import type { TestCaseResult } from "@/schema/problem.schema";
 
+const CASE_MARKER = "__CASE__";
+const OUTPUT_MARKER = "__OUTPUT__";
+const ERROR_MARKER = "__ERROR__";
+
 function normalizeOutput(s: string): string {
   const t = s.trim();
   try {
@@ -7,6 +11,71 @@ function normalizeOutput(s: string): string {
   } catch {
     return t;
   }
+}
+
+interface ParsedHarnessLine {
+  index: number;
+  kind: "out" | "err";
+  value: string;
+}
+
+function parseHarnessStdout(stdout: string): ParsedHarnessLine[] {
+  const lines = stdout.split("\n");
+  const parsed: ParsedHarnessLine[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]?.trimStart() ?? "";
+    if (!line.startsWith(CASE_MARKER)) {
+      continue;
+    }
+
+    const idx = Number.parseInt(line.slice(CASE_MARKER.length), 10);
+    if (Number.isNaN(idx)) {
+      continue;
+    }
+
+    const nextLine = lines[i + 1]?.trimStart() ?? "";
+    if (nextLine.startsWith(OUTPUT_MARKER)) {
+      parsed.push({
+        index: idx,
+        kind: "out",
+        value: nextLine.slice(OUTPUT_MARKER.length).trim(),
+      });
+      i += 1;
+      continue;
+    }
+
+    if (nextLine.startsWith(ERROR_MARKER)) {
+      parsed.push({
+        index: idx,
+        kind: "err",
+        value: nextLine.slice(ERROR_MARKER.length).trim(),
+      });
+      i += 1;
+    }
+  }
+
+  return parsed;
+}
+
+export function formatHarnessStdoutForDisplay(
+  stdout: string | null | undefined
+): string {
+  if (!stdout?.trim()) {
+    return "-";
+  }
+
+  const parsed = parseHarnessStdout(stdout);
+  if (parsed.length === 0) {
+    return stdout.trim();
+  }
+
+  return parsed
+    .map((entry) => {
+      const label = entry.kind === "err" ? "Error" : "Output";
+      return `Case ${entry.index + 1} ${label}: ${entry.value || "-"}`;
+    })
+    .join("\n");
 }
 
 /**
@@ -25,28 +94,9 @@ export function harnessStdoutToTestResults(
     }));
   }
 
-  const lines = stdout.split("\n");
   const outputs = new Map<number, { kind: "out" | "err"; value: string }>();
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line.startsWith("__CASE__")) continue;
-    const idx = parseInt(line.slice("__CASE__".length), 10);
-    if (Number.isNaN(idx)) continue;
-    const next = lines[i + 1];
-    if (!next) continue;
-    if (next.startsWith("__OUTPUT__")) {
-      outputs.set(idx, {
-        kind: "out",
-        value: next.slice("__OUTPUT__".length).trim(),
-      });
-    } else if (next.startsWith("__ERROR__")) {
-      outputs.set(idx, {
-        kind: "err",
-        value: next.slice("__ERROR__".length).trim(),
-      });
-    }
-    i++;
+  for (const entry of parseHarnessStdout(stdout)) {
+    outputs.set(entry.index, { kind: entry.kind, value: entry.value });
   }
 
   return testCases.map((tc, index) => {

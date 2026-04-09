@@ -11,7 +11,29 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { formatHarnessStdoutForDisplay } from "@/lib/runStdout";
 
+
+function formatTestCaseInput(
+  input: string,
+  signature?: { parameters?: Array<{ name: string; type: string }> }
+): string {
+  if (!signature?.parameters?.length) return input;
+  try {
+    const parsed = JSON.parse(input);
+    if (!Array.isArray(parsed)) return input;
+    return parsed
+      .map((v: unknown, i: number) => {
+        const param = signature.parameters![i];
+        const name = param?.name || `arg${i}`;
+        const val = typeof v === "string" ? v : JSON.stringify(v);
+        return `${name} = ${val}`;
+      })
+      .join("\n");
+  } catch {
+    return input;
+  }
+}
 
 interface TestCasePanelProps {
   testCases: TestCaseUI[];
@@ -20,6 +42,13 @@ interface TestCasePanelProps {
   onRemoveCustomTestCase: (id: number) => void;
   results: TestCaseResult[];
   isRunning: boolean;
+  signature?: { parameters?: Array<{ name: string; type: string }> };
+  runOutput?: {
+    stdout?: string | null;
+    stderr?: string | null;
+    status?: { id: number; description: string };
+    executionTime?: number | null;
+  } | null;
 }
 
 const TestCasePanel = ({
@@ -29,6 +58,8 @@ const TestCasePanel = ({
   onRemoveCustomTestCase,
   results,
   isRunning,
+  signature,
+  runOutput,
 }: TestCasePanelProps) => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [customInput, setCustomInput] = useState("");
@@ -110,6 +141,32 @@ const TestCasePanel = ({
       {/* Content - always visible, fills pane and scrolls when needed */}
       <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="px-4 pb-4">
+          {/* {runOutput && (
+            <div className="mb-4 rounded-lg border border-border bg-background/60 p-3">
+              <div className="mb-2 flex items-center justify-between text-xs font-mono text-muted-foreground">
+                <span>Run Result</span>
+                <span>{runOutput.status?.description ?? "Unknown"}</span>
+              </div>
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                <div>
+                  <p className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">stdout</p>
+                  <pre className="rounded border border-border bg-muted/40 p-2 text-xs whitespace-pre-wrap">
+                    {formatHarnessStdoutForDisplay(runOutput.stdout)}
+                  </pre>
+                </div>
+                <div>
+                  <p className="mb-1 text-[11px] font-semibold uppercase text-muted-foreground">stderr</p>
+                  <pre className="rounded border border-border bg-muted/40 p-2 text-xs whitespace-pre-wrap">
+                    {runOutput.stderr?.trim() ? runOutput.stderr : "-"}
+                  </pre>
+                </div>
+              </div>
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Execution time: {runOutput.executionTime ?? "-"} ms
+              </p>
+            </div>
+          )} */}
+
           {/* Test Case Tabs */}
           <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-thin">
             {allTestCases.map((tc, index) => {
@@ -203,10 +260,7 @@ const TestCasePanel = ({
                   )}
 
                   {/* Input/Output Grid */}
-                  <div className={cn(
-                    "grid gap-3",
-                    result && !result.passed ? "grid-cols-1 md:grid-cols-3" : "grid-cols-1 md:grid-cols-2"
-                  )}>
+                  <div className="grid gap-3 grid-cols-1 md:grid-cols-3">
                     {/* Input */}
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
@@ -216,7 +270,7 @@ const TestCasePanel = ({
                         </span>
                       </div>
                       <pre className="p-3 rounded-lg bg-muted/50 border border-border font-mono text-sm text-foreground/90 overflow-x-auto whitespace-pre-wrap">
-                        {tc.input}
+                        {formatTestCaseInput(tc.input, signature)}
                       </pre>
                     </div>
 
@@ -241,20 +295,32 @@ const TestCasePanel = ({
                       </pre>
                     </div>
 
-                    {/* Actual Output (only show on failure) */}
-                    {result && !result.passed && (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <div className="w-1.5 h-1.5 rounded-full bg-destructive" />
-                          <span className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
-                            Your Output
-                          </span>
-                        </div>
-                        <pre className="p-3 rounded-lg bg-destructive/5 border border-destructive/20 font-mono text-sm text-destructive overflow-x-auto whitespace-pre-wrap">
-                          {result.actualOutput}
-                        </pre>
+                    {/* Actual Output */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <div className={cn(
+                          "w-1.5 h-1.5 rounded-full",
+                          result?.passed
+                            ? "bg-arena-success"
+                            : result
+                              ? "bg-destructive"
+                              : "bg-muted-foreground"
+                        )} />
+                        <span className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
+                          Actual Output
+                        </span>
                       </div>
-                    )}
+                      <pre className={cn(
+                        "p-3 rounded-lg font-mono text-sm overflow-x-auto whitespace-pre-wrap border",
+                        result?.passed
+                          ? "bg-arena-success/5 border-arena-success/20 text-arena-success"
+                          : result
+                            ? "bg-destructive/5 border-destructive/20 text-destructive"
+                            : "bg-muted/50 border-border text-foreground/90"
+                      )}>
+                        {result?.actualOutput?.trim() ? result.actualOutput : "-"}
+                      </pre>
+                    </div>
                   </div>
 
                   {/* Delete button for custom (when no result) */}

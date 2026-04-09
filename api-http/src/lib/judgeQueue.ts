@@ -8,7 +8,7 @@ const JOB_NAME = "dsa-submission";
 const RUN_JOB_NAME = "dsa-run";
 
 /** api-http uses "js" internally, but the judge-worker expects "javascript" */
-const LANGUAGE_TO_JUDGE_JOB: Record<Language, "cpp" | "python" | "javascript" | "java"> = {
+export const LANGUAGE_TO_JUDGE_JOB: Record<Language, "cpp" | "python" | "javascript" | "java"> = {
   cpp: "cpp",
   java: "java",
   js: "javascript",

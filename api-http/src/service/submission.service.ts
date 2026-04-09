@@ -269,6 +269,11 @@ export const submitDsa = async (
   );
 
   return {
+    dsaSubmissionId: submission.id,
+    attemptId: submission.attemptId,
+    userId: submission.userId,
+    problemId: submission.problemId,
+    contestId: submission.contestId,
     status: "pending" as const,
     pointsEarned: 0,
     testCasesPassed: 0,

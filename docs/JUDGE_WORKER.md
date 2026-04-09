@@ -1,20 +1,29 @@
 # Judge Worker Service
 
-The `judge-worker` is a standalone Node.js + TypeScript microservice that acts as a BullMQ consumer for DSA code submissions. It picks jobs off a Redis-backed queue, sends the source code to Judge0 (via RapidAPI) for execution, parses the result, and writes the verdict back to the main `api-http` backend.
+The `judge-worker` is a standalone Node.js + TypeScript microservice that consumes two BullMQ queues on Redis:
+
+1. **`judge`** — DSA **submit** jobs: execute a full test harness, derive a verdict, and PATCH results back to `api-http`.
+2. **`judge-run`** — **Run** jobs: execute arbitrary (or harness-wrapped) code once, then **publish** the raw Judge0 result to a Redis channel so `api-http` can complete a waiting HTTP request.
+
+Judge0 is accessed via RapidAPI (same HTTP API as before: submit token, poll until terminal status).
 
 ---
 
 ## Table of Contents
 
 - [Architecture](#architecture)
-- [How a Job Flows Through the System](#how-a-job-flows-through-the-system)
+- [End-to-end: Submit flow (DSA)](#end-to-end-submit-flow-dsa)
+- [End-to-end: Run flow](#end-to-end-run-flow)
+- [How submit jobs move through the worker](#how-submit-jobs-move-through-the-worker)
+- [How run jobs move through the worker](#how-run-jobs-move-through-the-worker)
 - [Project Structure](#project-structure)
 - [File-by-File Reference](#file-by-file-reference)
   - [Entry Point](#entry-point--srcindexts)
   - [Worker Setup](#worker-setup--srcworkerts)
-  - [Job Processor](#job-processor--srcprocessorts)
+  - [Submit Job Processor](#submit-job-processor--srcprocessorts)
+  - [Run Job Processor](#run-job-processor--srcrunprocessorts)
   - [Queue Layer](#queue-layer--srcqueue)
-  - [Job Types & Validation](#job-types--validation--srctypesjobts)
+  - [Job Schemas](#job-schemas--srcschema)
   - [Error Classes](#error-classes--srcerrorsindexts)
   - [Logger](#logger--srcloggerindexts)
   - [Judge0 Integration](#judge0-integration--srcjudge)
@@ -22,91 +31,209 @@ The `judge-worker` is a standalone Node.js + TypeScript microservice that acts a
   - [Graceful Shutdown](#graceful-shutdown--srcshutdowngracefults)
 - [Stdout Parsing Algorithm](#stdout-parsing-algorithm)
 - [Verdict Derivation](#verdict-derivation)
+- [Run result payload (Redis pub/sub)](#run-result-payload-redis-pubsub)
 - [Retry & Failure Strategy](#retry--failure-strategy)
 - [Environment Variables](#environment-variables)
 - [Running the Service](#running-the-service)
 - [Docker](#docker)
-- [Pending TODOs for api-http](#pending-todos-for-api-http)
+- [api-http contract (internal PATCH)](#api-http-contract-internal-patch)
+- [Dependencies](#dependencies)
 
 ---
 
 ## Architecture
 
+### High level
+
 ```
-┌─────────────┐       ┌───────────┐       ┌──────────────┐       ┌──────────────┐
-│             │  push  │           │  pop   │              │ POST  │              │
-│   api-http  │───────▶│   Redis   │───────▶│ judge-worker │──────▶│   Judge0     │
-│  (producer) │       │  (BullMQ) │       │  (consumer)  │◀──────│  (RapidAPI)  │
-│             │◀──────│           │       │              │  poll  │              │
-│             │ PATCH  │           │       │              │       │              │
-└─────────────┘       └───────────┘       └──────────────┘       └──────────────┘
-      ▲                                          │
-      │              PATCH verdict               │
-      └──────────────────────────────────────────┘
+┌────────────────┐     enqueue      ┌───────────┐     consume      ┌──────────────┐     HTTP      ┌──────────────┐
+│    api-http    │─────────────────▶│   Redis   │─────────────────▶│ judge-worker │─────────────▶│   Judge0     │
+│   (producer)   │                  │  BullMQ   │                  │  (consumer)  │◀─────────────│  (RapidAPI)  │
+└────────────────┘                  └───────────┘                  └──────────────┘    poll       └──────────────┘
+        │                                 ▲                                │
+        │         submit: PATCH verdict   │         run: PUBLISH result    │
+        └─────────────────────────────────┴────────────────────────────────┘
+                          (HTTP internal API)              (Redis pub/sub on same Redis instance)
 ```
 
-**Key separation of concerns:**
+**Queues**
+
+| Queue name (`BullMQ`) | Job name | Processor | Purpose |
+|----------------------|----------|-----------|---------|
+| `judge` | `dsa-submission` | `processJob` | Contest DSA submit: verdict + DB updates via `api-http` |
+| `judge-run` | `dsa-run` | `processRunJob` | IDE “Run”: return execution output to caller via Redis |
+
+**Redis usage**
+
+| Mechanism | Used by | Role |
+|-----------|---------|------|
+| BullMQ | `api-http` + `judge-worker` | Reliable job delivery, retries, concurrency |
+| Pub/sub | `api-http` (`run.service`) + `judge-worker` (`runProcessor`) | Correlates a single HTTP `/api/run` request with one completed run job |
+
+**Separation of concerns**
 
 | Component | Role |
-|---|---|
-| `api-http` | BullMQ producer. Generates the complete wrapped source code (user function + test harness), creates a `DsaSubmission` row with `status: "pending"`, and enqueues a job. |
-| `judge-worker` | BullMQ consumer. Receives the job, submits the pre-built source code to Judge0, polls for the result, parses stdout markers, derives a verdict, and PATCHes the result back to `api-http`. |
-| Redis | Shared message broker between producer and consumer. BullMQ manages the queue, retries, and job lifecycle. |
-| Judge0 (RapidAPI) | Remote code execution engine. Receives a single submission per job (all test cases embedded in the harness) and returns stdout/stderr/status. |
+|-----------|------|
+| `api-http` | **Submit:** Creates `DsaSubmission` (`pending`), builds harness via `generateJudgeBoilerplate`, enqueues `judge` queue. **Run:** Validates body, optionally wraps code, subscribes to a unique channel, enqueues `judge-run`. |
+| `judge-worker` | **Submit:** Judge0 submit + poll, parse stdout markers, PATCH `api-http`. **Run:** Judge0 submit + poll, `PUBLISH` JSON to `responseChannel`. |
+| Redis | Shared broker for BullMQ and for run-result pub/sub (same host/port as `REDIS_*` env). |
+| Judge0 | Executes one submission per job; stdin is always empty (`""`). |
 
-The worker **never generates or modifies source code** — it receives a fully formed harness from `api-http` and submits it verbatim.
+The worker **does not** generate submit harnesses — `enqueueJudgeJob` in `api-http` produces `sourceCode` before enqueueing. For **run**, `api-http` may send raw user code or a harness (see [Run flow](#end-to-end-run-flow)).
 
 ---
 
-## How a Job Flows Through the System
+## End-to-end: Submit flow (DSA)
 
-Below is the complete lifecycle of a single submission, step by step:
+This is the contest “Submit” path for a DSA problem (persistent submission + async judging).
+
+### 1. Client → `api-http`
+
+- Route: contest submission handler (see `api-http` submission routes / `submitDsa` in `submission.service.ts`).
+- Body includes at least `code` and `language` (`LanguageEnum`: `cpp`, `java`, `js`, `python`).
+
+### 2. `api-http` — validation and persistence
+
+`submitDsa` (in `api-http/src/service/submission.service.ts`):
+
+1. Loads the attempt and DSA problem (signature, test cases, points, contest state).
+2. Ensures contest is active, no duplicate submission for this attempt/problem.
+3. Maps problem test cases to `SerializedTestCase[]` (`input`, `expectedOutput`).
+4. **`createDsaSubmission`** with `status: "pending"`, `pointsEarned: 0`, `testCasesPassed: 0`, `totalTestCases: testCases.length`.
+5. Calls **`enqueueJudgeJob`** (`api-http/src/lib/judgeQueue.ts`), passing `userCode`, `signature`, `testCases`, `language`, ids, and `totalPoints`.
+
+### 3. `api-http` — enqueue (`enqueueJudgeJob`)
+
+Inside `enqueueJudgeJob`:
+
+1. **`generateJudgeBoilerplate(signature, userCode, testCases)`** produces per-language harness strings; the job uses **`sourceCode = allHarnesses[language]`** (only the selected language).
+2. Maps API language to judge language: **`js` → `javascript`** (see `LANGUAGE_TO_JUDGE_JOB`).
+3. Generates **`jobId`** = `crypto.randomUUID()`.
+4. **`judgeQueue.add("dsa-submission", { jobId, dsaSubmissionId, attemptId, userId, problemId, contestId, language: judgeLanguage, sourceCode, totalTestCases, totalPoints }, { jobId })`**.
+
+Default queue options (`api-http/src/lib/queue.ts`): `attempts: 3`, exponential `backoff` from `2000` ms, `removeOnComplete: { count: 500 }`, `removeOnFail: false`.
+
+### 4. `api-http` — response to client
+
+`submitDsa` returns immediately with **`status: "pending"`**, zero points, and test case counts. It also advances `currentProblemId` for the attempt. The client polls or subscribes elsewhere for the final `DsaSubmission` status (outside this doc).
+
+### 5. `judge-worker` — consume `judge` queue
+
+`processJob` (`judge-worker/src/processor.ts`) runs the pipeline in [How submit jobs move through the worker](#how-submit-jobs-move-through-the-worker).
+
+### 6. `api-http` — internal callbacks (expected contract)
+
+On success, the worker calls:
+
+- **`PATCH /api/internal/submissions/dsa/:dsaSubmissionId`** — verdict fields.
+- **`PATCH /api/internal/attempts/:attemptId/score`** with `{ pointsToAdd }` **only if** `pointsEarned > 0` (full problem points on `accepted`).
+
+These routes are the **service contract** documented in [api-http contract](#api-http-contract-internal-patch). Wire them in `api-http` if they are not registered yet.
+
+---
+
+## End-to-end: Run flow
+
+This path is for **“Run code”** without creating a `DsaSubmission`: synchronous-from-the-client’s-perspective behavior over an async worker, using **Redis pub/sub** as the callback transport.
+
+### 1. Client → `api-http`
+
+- **Route:** `POST /api/run` (`api-http/src/routes/run.routes.ts`), authenticated.
+- **Body** (`RunCodeBodySchema` in `submission.schema.ts`):
+  - Required: `code`, `language` (same `LanguageEnum` as submit).
+  - Optional: `signature` (`BoilerplateSignature`), `testCases` (`input` / `expectedOutput` strings, **can be empty** in schema — wrapping runs when both signature and non-empty `testCases` are present).
+
+### 2. `api-http` — build `sourceCode` (`run.service.ts`)
+
+`runCode`:
+
+1. Starts with `sourceCode = code`.
+2. If **`signature` and `bodyTestCases` exist and `bodyTestCases.length > 0`**, replaces `sourceCode` with **`generateJudgeBoilerplate(...)[language]`** (same harness idea as submit, but in the run service).
+3. Creates a dedicated **subscriber** `IORedis` instance (`maxRetriesPerRequest: null`, `enableReadyCheck: false`) — separate from the BullMQ connection but **same Redis server** (`REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD`).
+
+### 3. `api-http` — subscribe-then-enqueue (race fix)
+
+The service builds a **unique channel name**, e.g. `judge:run:result:<timestamp>:<random>`.
+
+**Critical ordering** (comment in code):
+
+1. Register an `on("message")` handler that, for matching `responseChannel`, `JSON.parse`s the payload and **resolves** the in-flight promise.
+2. **`await subscriber.subscribe(responseChannel)`** — must complete **before** the worker can publish, so the message is not missed.
+3. **`await enqueueRunJob({ language, sourceCode, responseChannel })`**.
+
+A **35s** timer rejects the promise if no message arrives (`run.service.ts`).
+
+### 4. `api-http` — enqueue (`enqueueRunJob`)
+
+`enqueueRunJob` (`judgeQueue.ts`):
+
+1. **`runId = crypto.randomUUID()`**.
+2. Maps language with **`LANGUAGE_TO_JUDGE_JOB`**.
+3. **`runQueue.add("dsa-run", { runId, language: judgeLanguage, sourceCode, responseChannel }, { jobId: runId })`**.
+
+### 5. `judge-worker` — `processRunJob`
+
+See [Run Job Processor](#run-job-processor--srcrunprocessorts). In short: Judge0 submit + poll, then **`connection.publish(responseChannel, JSON.stringify(...))`** on the worker’s shared Redis connection.
+
+### 6. `api-http` — handle message
+
+- Parses JSON. If **`ok === false`**, throws **`AppError`** with status **502**, code **`RUN_EXECUTION_FAILED`**, message from `error` or a default.
+- If **`ok === true`**, returns **`{ runId, ...result }`** to the client (see [Run result payload](#run-result-payload-redis-pubsub)).
+- **`finally`:** clears timeout and **`subscriber.quit()`**.
+
+---
+
+## How submit jobs move through the worker
 
 ```
-1.  User submits code on the frontend
-2.  api-http creates DsaSubmission (status: "pending")
-3.  api-http generates wrapped source code (user fn + test harness)
-4.  api-http enqueues a BullMQ job onto the "judge" queue
-         │
-         ▼
-5.  judge-worker pops the job from Redis
-6.  Validates the job payload with Zod
-         │  (invalid payload → UnrecoverableError → job moves to "failed", no retry)
-         ▼
-7.  POST /submissions to Judge0 → receives a token
-         │  (unsupported language → UnrecoverableError)
-         │  (Judge0 HTTP error → JudgeApiError → BullMQ retries)
-         ▼
-8.  Poll GET /submissions/:token every 1.5s (up to 20 times = 30s max)
-         │  (poll timeout → PollTimeoutError → BullMQ retries)
-         ▼
-9.  Judge0 returns terminal status (id >= 3)
-         │
-         ▼
-10. Derive verdict:
-         │  status 5         → time_limit_exceeded
-         │  status 6         → runtime_error (compilation)
-         │  status 7–14      → runtime_error (signals)
-         │  status 4         → wrong_answer
-         │  status 3         → parse stdout markers
-         │      all passed   → accepted
-         │      __ERROR__    → runtime_error
-         │      mismatch     → wrong_answer
-         │      empty stdout → runtime_error
-         ▼
-11. Compute pointsEarned:
-         │  accepted → job.totalPoints
-         │  anything else → 0
-         ▼
-12. PATCH /api/internal/submissions/dsa/:id  → store verdict on DsaSubmission
-         │
-         ▼
-13. If pointsEarned > 0:
-         PATCH /api/internal/attempts/:id/score → increment ContestAttempt.totalPoints
-         │
-         ▼
-14. Job marked as "completed" in BullMQ
+parseJob(job.data)                    // Zod — judge-worker/src/schema/job.schema.ts
+    │
+    ▼
+submitToJudge0(parsedJob)             // POST /submissions → token
+    │
+    ▼
+pollForVerdict(token)                 // GET until terminal status.id in {3..14}
+    │
+    ▼
+deriveVerdict(judgeResponse, totalTestCases)
+    │
+    ▼
+pointsEarned = status === "accepted" ? totalPoints : 0
+    │
+    ▼
+updateSubmission(dsaSubmissionId, payload)
+    │
+    ▼
+if pointsEarned > 0 → updateAttemptScore(attemptId, pointsEarned)
 ```
+
+**Errors**
+
+- Invalid payload (`ZodError`) → thrown as **`UnrecoverableError`** (from `bullmq`, via `./errors`) → **no BullMQ retry**.
+- Judge0 / poll / backend errors → may trigger **BullMQ retries** per job options (see [Retry & Failure Strategy](#retry--failure-strategy)).
+
+---
+
+## How run jobs move through the worker
+
+```
+parseRunJob(job.data)                 // Zod — run-job.schema.ts
+    │
+    ▼
+submitRunToJudge0(language, sourceCode)
+    │
+    ▼
+pollForVerdict(token)
+    │
+    ▼
+PUBLISH responseChannel { ok: true, runId, token, status, stdout, stderr, ... }
+```
+
+On **any failure** after the job has started:
+
+1. Logs the error.
+2. **`PUBLISH`** `{ ok: false, runId, error: message }` so the HTTP layer always gets a reply.
+3. Throws **`UnrecoverableError`** from **`bullmq`** (aliased as `BullUnrecoverableError` in code) so **BullMQ does not retry** — retries would republish to a channel the client may have already abandoned after timeout.
 
 ---
 
@@ -115,32 +242,33 @@ Below is the complete lifecycle of a single submission, step by step:
 ```
 judge-worker/
 ├── src/
-│   ├── index.ts                         # Entry point — boots Redis, worker, shutdown
-│   ├── worker.ts                        # BullMQ Worker creation + event listeners
-│   ├── processor.ts                     # Core job logic (called by worker per job)
+│   ├── index.ts                    # Redis ping, createWorkers(), graceful shutdown
+│   ├── worker.ts                   # Two Workers: QUEUE_NAME + RUN_QUEUE_NAME
+│   ├── processor.ts                # Submit pipeline (DSA)
+│   ├── runProcessor.ts             # Run pipeline + Redis PUBLISH
 │   ├── judge/
-│   │   ├── types.ts                     # Judge0 request/response TypeScript interfaces
-│   │   ├── client.ts                    # Axios instance for Judge0 RapidAPI
-│   │   ├── submit.ts                    # POST /submissions → returns token
-│   │   ├── poll.ts                      # GET /submissions/:token polling loop
-│   │   └── parse.ts                     # Stdout marker parser + verdict derivation
+│   │   ├── client.ts               # Axios → Judge0 RapidAPI
+│   │   ├── submit.ts               # submitToJudge0 + submitRunToJudge0 (shared POST)
+│   │   ├── poll.ts                 # Poll loop until terminal status
+│   │   └── parse.ts                # parseStdout + deriveVerdict (submit only)
 │   ├── backend/
-│   │   ├── client.ts                    # Axios instance for api-http internal calls
-│   │   ├── updateSubmission.ts          # PATCH DsaSubmission verdict
-│   │   └── updateAttemptScore.ts        # PATCH ContestAttempt score
+│   │   ├── client.ts               # Axios → api-http internal API
+│   │   ├── updateSubmission.ts     # PATCH DsaSubmission verdict
+│   │   └── updateAttemptScore.ts   # PATCH attempt score
 │   ├── queue/
-│   │   ├── connection.ts                # Shared ioredis instance for BullMQ
-│   │   └── constants.ts                 # Queue name, poll config, language map
+│   │   ├── connection.ts           # ioredis: BullMQ + PUBLISH for runs
+│   │   └── constants.ts            # Queue names, poll tuning, language map
+│   ├── schema/
+│   │   ├── job.schema.ts           # JudgeJob + Zod + UpdateSubmissionPayload
+│   │   ├── run-job.schema.ts       # RunJob + Zod
+│   │   └── judge0.schema.ts        # Judge0 DTOs + ParseResult
 │   ├── errors/
-│   │   └── index.ts                     # Custom error classes
+│   │   └── index.ts                # Re-exports UnrecoverableError; custom errors
 │   ├── logger/
-│   │   └── index.ts                     # Pino logger setup
-│   ├── shutdown/
-│   │   └── graceful.ts                  # SIGTERM/SIGINT handler
-│   └── types/
-│       └── job.ts                       # JudgeJob interface + Zod schema
+│   │   └── index.ts                # Pino
+│   └── shutdown/
+│       └── graceful.ts             # SIGTERM/SIGINT; closes all workers
 ├── .env.example
-├── .gitignore
 ├── Dockerfile
 ├── tsconfig.json
 └── package.json
@@ -152,69 +280,44 @@ judge-worker/
 
 ### Entry Point — `src/index.ts`
 
-The startup sequence:
-
-1. **Verify Redis** — calls `connection.ping()`. If Redis is unreachable, logs a fatal error and exits with code 1.
-2. **Create Worker** — calls `createWorker()` which registers the BullMQ worker on the `"judge"` queue.
-3. **Register Shutdown** — attaches SIGTERM/SIGINT handlers for graceful drain.
-4. **Log startup** — prints queue name, concurrency, and `NODE_ENV` (never secrets).
-
-No exports — this file is the entry point only.
+1. **`connection.ping()`** — fatal exit if Redis is down.
+2. **`createWorkers()`** — registers **two** BullMQ workers (submit + run).
+3. **`registerGracefulShutdown(workers)`** — closes every worker, then `connection.quit()`.
+4. Logs **`queue`**, **`runQueue`**, **`concurrency`**, **`nodeEnv`** (no secrets).
 
 ---
 
 ### Worker Setup — `src/worker.ts`
 
-Exports `createWorker()` which instantiates a BullMQ `Worker` with:
+**`createWorkers(): Worker[]`**
 
-| Option | Value | Reason |
-|---|---|---|
-| `concurrency` | `WORKER_CONCURRENCY` (default 4) | Process up to N jobs in parallel |
-| `limiter.max` | 10 | Max 10 jobs started per second |
-| `limiter.duration` | 1000ms | Rate-limit window to respect RapidAPI limits |
-| `connection` | shared ioredis instance | Connects to the same Redis as `api-http` |
+| Worker | Queue | Processor | Options |
+|--------|-------|-----------|---------|
+| Submit | `QUEUE_NAME` (`"judge"`) | `processJob` | `concurrency: WORKER_CONCURRENCY`, limiter `max: 10` / `duration: 1000` |
+| Run | `RUN_QUEUE_NAME` (`"judge-run"`) | `processRunJob` | Same |
 
-**Event listeners:**
-
-| Event | Action |
-|---|---|
-| `completed` | Logs job ID + processing duration (ms) |
-| `failed` | Logs job ID, attempt number, error message |
-| `error` | Logs worker-level error (does not crash) |
-| `stalled` | Warns about stalled job ID |
+**Events** (both workers): `completed` (duration), `failed`, `error`, `stalled` — all log with `queueName` for disambiguation.
 
 ---
 
-### Job Processor — `src/processor.ts`
+### Submit Job Processor — `src/processor.ts`
 
-This is the function BullMQ calls for each job. The complete processing pipeline:
+- **`parseJob`** from `./schema/job.schema`.
+- Child logger fields: `jobId`, `dsaSubmissionId`, `attemptId`, `workerId` (BullMQ job id).
+- **`deriveVerdict`** returns `{ status, testCasesPassed, executionTime }`.
+- **`updateSubmission`** then conditional **`updateAttemptScore`**.
 
-```
-parseJob(job.data)
-    │
-    ▼
-submitToJudge0(parsedJob)  →  token
-    │
-    ▼
-pollForVerdict(token)  →  Judge0StatusResponse
-    │
-    ▼
-deriveVerdict(response, totalTestCases)  →  { status, testCasesPassed, executionTime }
-    │
-    ▼
-pointsEarned = (status === "accepted") ? totalPoints : 0
-    │
-    ▼
-updateSubmission(dsaSubmissionId, payload)
-    │
-    ▼
-if pointsEarned > 0:  updateAttemptScore(attemptId, pointsEarned)
-```
+---
 
-**Error handling:**
-- `ZodError` from `parseJob` → wrapped in `UnrecoverableError` → BullMQ skips retries, moves job to failed.
-- All other errors bubble up to BullMQ, which handles retries based on the job's `attempts` config.
-- A child logger is created per job with `jobId`, `dsaSubmissionId`, `attemptId`, and `workerId` for structured tracing.
+### Run Job Processor — `src/runProcessor.ts`
+
+- **`parseRunJob`** from `./schema/run-job.schema`.
+- Child logger: `runId`, `workerId`.
+- **`executionTime`**: `Math.round(parseFloat(time) * 1000)` when Judge0 `time` is non-null.
+- **Success publish** includes: `ok: true`, `runId`, `token`, `status`, `stdout`, `stderr`, `compileOutput` (from `compile_output`), `memory`, `executionTime`.
+- **Failure**: publish `ok: false` + `error`, then **`UnrecoverableError`** to disable retries.
+
+Uses **`connection`** from `./queue/connection` for **`publish`** (same Redis client as BullMQ).
 
 ---
 
@@ -222,327 +325,225 @@ if pointsEarned > 0:  updateAttemptScore(attemptId, pointsEarned)
 
 #### `connection.ts`
 
-Creates a single `ioredis` instance with two critical BullMQ-required options:
+Single **`ioredis`** instance:
 
-| Option | Value | Why |
-|---|---|---|
-| `maxRetriesPerRequest` | `null` | BullMQ uses blocking commands (`BRPOPLPUSH`) that can block indefinitely. A finite retry count would cause spurious failures. |
-| `enableReadyCheck` | `false` | BullMQ manages its own readiness; the default Redis `READY` check can interfere. |
-
-Reads `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD` from environment. Attaches an `error` event handler that logs but does not crash.
+- `maxRetriesPerRequest: null`, `enableReadyCheck: false` (required for BullMQ).
+- Used by **BullMQ** workers and by **`connection.publish`** in the run processor.
 
 #### `constants.ts`
 
-| Constant | Value | Purpose |
-|---|---|---|
-| `QUEUE_NAME` | `"judge"` | The BullMQ queue both producer and consumer share |
-| `JOB_NAME` | `"dsa-submission"` | Job type identifier |
-| `POLL_MAX_ATTEMPTS` | `20` | Maximum polling iterations |
-| `POLL_INTERVAL_MS` | `1500` | Delay between polls (total max wait: 30s) |
-| `WORKER_CONCURRENCY` | from env, default `4` | Parallel job processing slots |
-| `JUDGE0_LANGUAGE_MAP` | `{ cpp: 54, python: 71, javascript: 63, java: 62 }` | Maps language strings to Judge0 IDs |
-| `JUDGE0_TERMINAL_STATUSES` | `Set([3..14])` | Status IDs that indicate execution is complete |
+| Export | Value / meaning |
+|--------|------------------|
+| `QUEUE_NAME` | `"judge"` |
+| `RUN_QUEUE_NAME` | `"judge-run"` |
+| `JOB_NAME` | `"dsa-submission"` (mirrors producer; worker listens to queue name) |
+| `RUN_JOB_NAME` | `"dsa-run"` |
+| `POLL_MAX_ATTEMPTS` | `20` |
+| `POLL_INTERVAL_MS` | `1500` (~30s max poll) |
+| `WORKER_CONCURRENCY` | `parseInt(process.env.WORKER_CONCURRENCY \|\| "4", 10)` |
+| `JUDGE0_LANGUAGE_MAP` | `cpp: 54`, `python: 71`, `javascript: 63`, `java: 62` |
+| `JUDGE0_TERMINAL_STATUSES` | `3`–`14` |
 
 ---
 
-### Job Types & Validation — `src/types/job.ts`
+### Job Schemas — `src/schema/`
 
-Defines the `JudgeJob` interface that mirrors what `api-http` enqueues:
+#### `job.schema.ts` — submit (`JudgeJob`)
 
-```typescript
-interface JudgeJob {
-  jobId: string;              // UUID idempotency key
-  dsaSubmissionId: number;    // PK of DsaSubmission row
-  attemptId: number;          // FK to ContestAttempt
-  userId: number;
-  problemId: number;
-  contestId: number;
-  language: "cpp" | "python" | "javascript" | "java";
-  sourceCode: string;         // Fully generated harness — submitted as-is
-  totalTestCases: number;     // Number of test cases embedded in source
-  totalPoints: number;        // DsaProblem.points for scoring
-}
-```
+| Field | Type | Meaning |
+|-------|------|---------|
+| `jobId` | string | UUID from producer (idempotency / tracing) |
+| `dsaSubmissionId` | number | Row to PATCH |
+| `attemptId` | number | Contest attempt (score increment) |
+| `userId`, `problemId`, `contestId` | number | Context / auditing |
+| `language` | enum | `cpp` \| `python` \| `javascript` \| `java` |
+| `sourceCode` | string | Full harness for selected language |
+| `totalTestCases` | number | For stdout parser |
+| `totalPoints` | number | Awarded in full on `accepted` |
 
-The `judgeJobSchema` (Zod) enforces every field's type at runtime. `parseJob(data)` validates unknown data and returns a typed `JudgeJob` or throws a `ZodError`.
+#### `run-job.schema.ts` — run (`RunJob`)
+
+| Field | Type |
+|-------|------|
+| `runId` | string (UUID) |
+| `language` | same enum as submit |
+| `sourceCode` | string |
+| `responseChannel` | string — Redis channel for `PUBLISH` |
+
+#### `judge0.schema.ts`
+
+- `Judge0SubmitRequest`, `Judge0SubmitResponse`, `Judge0StatusResponse`, `ParseResult`.
 
 ---
 
 ### Error Classes — `src/errors/index.ts`
 
-| Class | When Thrown | Retryable? |
-|---|---|---|
-| `UnrecoverableError` (from `bullmq`) | Invalid job payload, unsupported language | No — moves to failed immediately |
-| `JudgeApiError` | Judge0 returns non-2xx HTTP status | Yes — BullMQ retries |
-| `PollTimeoutError` | Polling loop exhausted (20 attempts) | Yes — BullMQ retries |
-| `BackendApiError` | `api-http` returns 5xx | Yes — internal retry (3x) then BullMQ retry |
-
-All custom classes extend `Error` and set `this.name` in the constructor for clean stack traces.
+| Class | When | Submit retries? | Run retries? |
+|-------|------|-----------------|--------------|
+| `UnrecoverableError` (`bullmq`) | Bad Zod payload; run failure after publish | No | No (run uses this after notifying client) |
+| `JudgeApiError` | Judge0 non-2xx on submit/poll | Yes | Yes (until run catches and publishes + Unrecoverable) |
+| `PollTimeoutError` | 20 polls without terminal status | Yes | Yes |
+| `BackendApiError` | `api-http` 5xx (response interceptor) | Yes | N/A (run does not call backend) |
 
 ---
 
 ### Logger — `src/logger/index.ts`
 
-Uses [Pino](https://getpino.io/) for structured JSON logging.
-
-- **Production** (`NODE_ENV=production`): raw JSON output (ideal for log aggregators)
-- **Development**: pretty-printed with color via `pino-pretty`
-
-Exports:
-- `logger` — root logger instance
-- `childLogger(context)` — creates a child logger with additional fields (used per-job in the processor)
+Pino: JSON in production, pretty in development. **`childLogger(context)`** for per-job fields.
 
 ---
 
 ### Judge0 Integration — `src/judge/`
 
-#### `types.ts`
-
-Three TypeScript interfaces matching Judge0's API contract:
-
-- `Judge0SubmitRequest` — `{ language_id, source_code, stdin }` (stdin is always `""`)
-- `Judge0SubmitResponse` — `{ token }` (returned after submission)
-- `Judge0StatusResponse` — `{ token, status, stdout, stderr, compile_output, time, memory }`
-
-#### `client.ts`
-
-An Axios instance preconfigured for Judge0 RapidAPI:
-
-- Base URL: `JUDGE0_API_URL` (https://judge029.p.rapidapi.com)
-- Headers: `X-RapidAPI-Host`, `X-RapidAPI-Key`, `Content-Type: application/json`
-- Timeout: 10 seconds
-
 #### `submit.ts`
 
-`submitToJudge0(job: JudgeJob): Promise<string>`
+- **`submitSourceToJudge0(language, sourceCode)`** — shared implementation.
+- **`submitToJudge0(job)`** — submit job harness.
+- **`submitRunToJudge0(language, sourceCode)`** — run job.
 
-1. Looks up `language_id` from `JUDGE0_LANGUAGE_MAP`.
-2. If the language is not in the map, throws `UnrecoverableError` (no point retrying an unsupported language).
-3. POSTs to `/submissions?base64_encoded=false&wait=false` with the body:
-   ```json
-   {
-     "language_id": 54,
-     "source_code": "<harness from api-http>",
-     "stdin": ""
-   }
-   ```
-4. On non-2xx: throws `JudgeApiError` with status code and response body.
-5. Returns the `token` string for subsequent polling.
-
-The `wait=false` parameter means Judge0 immediately returns a token rather than blocking until execution completes. This keeps our HTTP call fast and we handle waiting via polling.
+POST **`/submissions?base64_encoded=false&wait=false`** with `{ language_id, source_code, stdin: "" }`. Unknown language → **`UnrecoverableError`**.
 
 #### `poll.ts`
 
-`pollForVerdict(token: string): Promise<Judge0StatusResponse>`
-
-A simple poll loop:
-
-```
-for attempt 0..19:
-    GET /submissions/:token?base64_encoded=false&fields=token,status,stdout,stderr,time,memory,compile_output
-    if status.id is terminal (>= 3):
-        return response
-    else:
-        sleep 1500ms
-
-throw PollTimeoutError
-```
-
-- Total maximum wait: 20 x 1500ms = **30 seconds**
-- `sleep` is implemented as a plain `Promise` with `setTimeout` — no `setInterval`.
-- If Judge0 is still queued/processing after 30s, a `PollTimeoutError` is thrown, which triggers a BullMQ retry (up to 3 attempts with exponential backoff).
+GET **`/submissions/:token?base64_encoded=false&fields=token,status,stdout,stderr,time,memory,compile_output`**. Loop until `status.id` ∈ `JUDGE0_TERMINAL_STATUSES`, else sleep `POLL_INTERVAL_MS`. Exhaustion → **`PollTimeoutError`**.
 
 #### `parse.ts`
 
-Two exported functions for verdict derivation.
-
-**`parseStdout(stdout, totalTestCases): ParseResult`**
-
-Implements the "stop on first failure" marker parser. See [Stdout Parsing Algorithm](#stdout-parsing-algorithm) below.
-
-**`deriveVerdict(judgeStatus, totalTestCases): VerdictResult`**
-
-Maps the Judge0 status ID + parsed stdout into the final verdict. See [Verdict Derivation](#verdict-derivation) below.
+**Submit only:** **`parseStdout`**, **`deriveVerdict`** — see below. Run jobs **do not** use these; they forward raw Judge0 fields over pub/sub.
 
 ---
 
 ### Backend Integration — `src/backend/`
 
+Only used by **submit** (`processor.ts`), not by **run**.
+
 #### `client.ts`
 
-An Axios instance for calling `api-http`'s internal endpoints:
+Axios: `BACKEND_API_URL`, `Authorization: Bearer BACKEND_INTERNAL_SECRET`, 8s timeout. Interceptor throws **`BackendApiError`** on **5xx**.
 
-- Base URL: `BACKEND_API_URL` (e.g. `http://localhost:3000`)
-- Auth: `Authorization: Bearer <BACKEND_INTERNAL_SECRET>` — a shared secret between the two services
-- Timeout: 8 seconds
-- **Response interceptor**: on any 5xx response, logs the error and throws `BackendApiError`
+#### `updateSubmission.ts` / `updateAttemptScore.ts`
 
-#### `updateSubmission.ts`
-
-`updateSubmission(dsaSubmissionId, payload): Promise<void>`
-
-PATCHes the verdict onto the `DsaSubmission` row:
-
-```
-PATCH /api/internal/submissions/dsa/:dsaSubmissionId
-Body: {
-  status: "accepted" | "wrong_answer" | "time_limit_exceeded" | "runtime_error",
-  pointsEarned: number,
-  testCasesPassed: number,
-  totalTestCases: number,
-  executionTime: number | null
-}
-```
-
-Includes an internal retry loop (3 attempts, 1s delay) for transient network errors (`ECONNREFUSED` or Axios network errors with no response). Non-network errors are thrown immediately.
-
-#### `updateAttemptScore.ts`
-
-`updateAttemptScore(attemptId, pointsToAdd): Promise<void>`
-
-Increments the contest attempt's total score:
-
-```
-PATCH /api/internal/attempts/:attemptId/score
-Body: { pointsToAdd: number }
-```
-
-Only called when `pointsEarned > 0` (i.e., the submission was `"accepted"`). Same retry logic as `updateSubmission`.
+PATCH paths as in [api-http contract](#api-http-contract-internal-patch). **3** attempts, **1s** delay, retry only on network errors (`ECONNREFUSED` / Axios no-response).
 
 ---
 
 ### Graceful Shutdown — `src/shutdown/graceful.ts`
 
-`registerGracefulShutdown(worker): void`
+**`registerGracefulShutdown(workers: Worker[])`**
 
-Registers handlers for `SIGTERM` and `SIGINT`. The shutdown sequence:
-
-1. Log "Shutdown signal received"
-2. Start a 30-second hard-kill timer (`.unref()` so it doesn't keep the event loop alive)
-3. `await worker.close()` — BullMQ finishes all in-flight jobs before closing
-4. `await connection.quit()` — cleanly disconnects from Redis
-5. `process.exit(0)`
-
-If the graceful shutdown takes longer than 30 seconds (e.g., a job is stuck in a long poll), the hard-kill timer fires `process.exit(1)`.
+1. 30s hard kill timer (`unref`).
+2. **`Promise.all(workers.map((w) => w.close()))`**
+3. **`connection.quit()`**
+4. **`process.exit(0)`** (or `1` on hard kill).
 
 ---
 
 ## Stdout Parsing Algorithm
 
-The test harness generated by `api-http` prints structured markers to stdout for each test case. The format per test case is:
+Used **only** for the **submit** path when Judge0 reports infra-level success (`status.id === 3`) and stdout is non-empty.
+
+Harness prints markers (generated in `api-http` boilerplate):
 
 ```
-__CASE__<zero-indexed number>
-__OUTPUT__<result>          ← if the test ran without exception
-__ERROR__<message>          ← if an exception was thrown
+__CASE__<index>
+__OUTPUT__<result>     ← test passed path in harness
+__ERROR__<message>    ← harness detected failure / exception
 ```
 
-The worker parses these markers using a **stop-on-first-failure** strategy:
+**`parseStdout`** (`parse.ts`):
 
-```
-Split stdout by newline
-Walk lines in order:
+- Empty stdout → `runtime_error`, 0 passed.
+- Walk lines in order; on **`__ERROR__`** → stop, `runtime_error`.
+- On **`__OUTPUT__`** → increment `testCasesPassed` (harness is responsible for comparison; worker trusts markers).
+- After lines: if `testCasesPassed >= totalTestCases` → `accepted`; if partial → `wrong_answer`; if zero → `runtime_error`.
 
-  __CASE__<i>     →  Set currentCase = i
-
-  __OUTPUT__<r>   →  Test case passed. Increment testCasesPassed.
-
-  __ERROR__<msg>  →  STOP. Return { verdict: "runtime_error", stoppedAtCase: currentCase }
-
-After all lines:
-  if testCasesPassed >= totalTestCases  →  "accepted"
-  if testCasesPassed > 0 but < total    →  "wrong_answer" (some passed, then ran out of output)
-  if testCasesPassed == 0               →  "runtime_error" (no output at all)
-```
-
-The function never throws. Even malformed stdout results in a valid `ParseResult` with `verdict: "runtime_error"`.
+Does not throw; always returns a `ParseResult`.
 
 ---
 
 ## Verdict Derivation
 
-`deriveVerdict` maps the raw Judge0 response into one of four final statuses:
+**`deriveVerdict`** (`parse.ts`) maps Judge0 `status.id` + stdout to `{ status, testCasesPassed, executionTime }`:
 
-| Judge0 `status.id` | Verdict | stdout parsed? |
-|---|---|---|
-| 5 | `time_limit_exceeded` | No |
-| 6 | `runtime_error` (compilation failure) | No |
-| 7–14 | `runtime_error` (SIGSEGV, SIGFPE, NZEC, etc.) | No |
-| 4 | `wrong_answer` | No |
-| 3 (stdout empty) | `runtime_error` | No |
-| 3 (stdout present) | Determined by `parseStdout()` | Yes |
+| `status.id` | Result |
+|-------------|--------|
+| `5` | `time_limit_exceeded` |
+| `6` | `runtime_error` (compile) |
+| `7`–`14` | `runtime_error` (runtime / signal / NZEC, etc.) |
+| `4` | `wrong_answer` |
+| `3` | Empty stdout → `runtime_error`; else use **`parseStdout`** |
 
-**Points calculation:**
+**Points:** `accepted` → `job.totalPoints`; else **0**.
 
-| Verdict | pointsEarned |
-|---|---|
-| `accepted` | `job.totalPoints` (full marks) |
-| Everything else | `0` |
+**Execution time:** `time` string in seconds → ms, rounded; `null` if missing.
 
-**Execution time:** Parsed from Judge0's `time` field (a string like `"0.042"` representing seconds). Converted to milliseconds via `Math.round(parseFloat(time) * 1000)`. If `null`, stored as `null`.
+---
+
+## Run result payload (Redis pub/sub)
+
+Message body is a **JSON string** on `responseChannel`.
+
+### Success (`ok: true`)
+
+| Field | Notes |
+|-------|--------|
+| `ok` | `true` |
+| `runId` | UUID from job |
+| `token` | Judge0 submission token |
+| `status` | Judge0 status object (`id`, `description`) |
+| `stdout`, `stderr` | As returned by Judge0 |
+| `compileOutput` | From `compile_output` |
+| `memory` | Judge0 memory |
+| `executionTime` | ms, derived from `time` |
+
+The HTTP layer spreads this into the JSON response (plus its own `runId` normalization).
+
+### Failure (`ok: false`)
+
+| Field | Notes |
+|-------|--------|
+| `ok` | `false` |
+| `runId` | UUID |
+| `error` | String message |
 
 ---
 
 ## Retry & Failure Strategy
 
-Retries operate at two levels:
+### BullMQ (both queues)
 
-### Level 1: BullMQ Job Retries
+Producer defaults in **`api-http/src/lib/queue.ts`**: `attempts: 3`, exponential backoff from **2000 ms**, `removeOnComplete: { count: 500 }`, `removeOnFail: false`.
 
-Configured by `api-http` when enqueuing (the worker respects whatever the producer sets). The expected defaults:
+**Submit** retries make sense for transient Judge0 or `api-http` outages.
 
-| Option | Value |
-|---|---|
-| `attempts` | 3 |
-| `backoff.type` | `"exponential"` |
-| `backoff.delay` | 2000ms (so: 2s, 4s, 8s) |
-| `removeOnComplete.count` | 500 (keep last 500 completed jobs) |
-| `removeOnFail` | `false` (keep all failed jobs for inspection) |
+**Run** retries are **suppressed** on the failure path after a pub/sub message ( **`UnrecoverableError`** ), so the client does not get duplicate out-of-order messages on a stale channel.
 
-Errors that trigger BullMQ retries:
-- `JudgeApiError` — Judge0 returned a non-2xx (may be transient)
-- `PollTimeoutError` — Judge0 was slow, might succeed on retry
-- `BackendApiError` — `api-http` returned 5xx
-- Network errors — connection failures to Judge0 or Redis
+### Internal backend retries (submit only)
 
-Errors that **skip** retries:
-- `UnrecoverableError` — invalid job payload or unsupported language. There's no point retrying — the same data will fail again.
+`updateSubmission` / `updateAttemptScore`: **3** tries, **1 s** apart, only for network failures without HTTP response.
 
-### Level 2: Backend Call Retries (Internal)
+### Rate limiting
 
-Both `updateSubmission` and `updateAttemptScore` have a built-in retry loop:
-- 3 attempts, 1-second delay between retries
-- Only retries on **network errors** (no response from `api-http`)
-- Non-network errors (4xx, 5xx with response) are thrown immediately
-
-This two-tier approach means a transient `api-http` restart won't waste a BullMQ attempt.
-
-### Rate Limiting
-
-The worker's BullMQ limiter (`max: 10, duration: 1000`) ensures at most 10 jobs start processing per second, preventing bursts from overwhelming the Judge0 RapidAPI quota.
+Per-worker limiter: **10** jobs started per **1000 ms** (both queues independently use the same limiter config).
 
 ---
 
 ## Environment Variables
 
 | Variable | Required | Default | Description |
-|---|---|---|---|
-| `REDIS_HOST` | No | `localhost` | Redis server hostname |
-| `REDIS_PORT` | No | `6379` | Redis server port |
-| `REDIS_PASSWORD` | No | _(empty)_ | Redis password (if auth is enabled) |
-| `WORKER_CONCURRENCY` | No | `4` | Number of jobs processed in parallel |
-| `NODE_ENV` | No | `development` | `production` for JSON logs, anything else for pretty logs |
-| `JUDGE0_API_URL` | Yes | — | Judge0 RapidAPI base URL (`https://judge029.p.rapidapi.com`) |
-| `JUDGE0_RAPIDAPI_HOST` | Yes | — | RapidAPI host header (`judge029.p.rapidapi.com`) |
-| `JUDGE0_RAPIDAPI_KEY` | Yes | — | Your RapidAPI key (never commit this) |
-| `BACKEND_API_URL` | Yes | — | `api-http` base URL (e.g. `http://localhost:3000`) |
-| `BACKEND_INTERNAL_SECRET` | Yes | — | Shared secret for service-to-service auth |
+|----------|----------|---------|-------------|
+| `REDIS_HOST` | No | `localhost` | Redis for BullMQ + pub/sub |
+| `REDIS_PORT` | No | `6379` | |
+| `REDIS_PASSWORD` | No | _(empty)_ | |
+| `WORKER_CONCURRENCY` | No | `4` | Per-queue concurrency (each worker uses this value) |
+| `NODE_ENV` | No | `development` | Logging format |
+| `JUDGE0_API_URL` | Yes | — | Judge0 RapidAPI base URL |
+| `JUDGE0_RAPIDAPI_HOST` | Yes | — | `Host` header |
+| `JUDGE0_RAPIDAPI_KEY` | Yes | — | API key |
+| `BACKEND_API_URL` | Yes* | — | `api-http` base URL (*required for submit pipeline) |
+| `BACKEND_INTERNAL_SECRET` | Yes* | — | Bearer token for internal PATCH (*submit only) |
 
-Copy `.env.example` to `.env` and fill in the values:
-
-```bash
-cp .env.example .env
-```
+`api-http` needs matching **`REDIS_*`** and the same queue names (`judge`, `judge-run`).
 
 ---
 
@@ -551,86 +552,70 @@ cp .env.example .env
 ### Prerequisites
 
 - Node.js 20+
-- A running Redis instance
-- A running `api-http` instance (for the PATCH callbacks)
-- A valid Judge0 RapidAPI key
+- Redis (reachable from both `api-http` and `judge-worker`)
+- Judge0 RapidAPI credentials
+- For submit end-to-end: `api-http` running with internal PATCH routes implemented
 
 ### Development
 
 ```bash
 cd judge-worker
 npm install
-cp .env.example .env   # then fill in your values
-npm run dev             # starts with tsx watch (auto-reload on file changes)
+cp .env.example .env
+npm run dev
 ```
 
 ### Production
 
 ```bash
-npm run build           # compiles TypeScript to dist/
-npm start               # runs node dist/index.js
+npm run build
+npm start
 ```
 
 ---
 
 ## Docker
 
-The `Dockerfile` uses a multi-stage build:
-
-**Stage 1 (`builder`):** `node:20-alpine` — installs all dependencies (including dev), compiles TypeScript.
-
-**Stage 2 (`runner`):** `node:20-alpine` — copies only `dist/`, `node_modules/`, and `package.json`. Runs as the non-root `node` user for security.
+Multi-stage build: compile in `node:20-alpine`, run `node dist/index.js` as non-root. Pass the same env vars as above; ensure Redis is reachable from the container network.
 
 ```bash
 docker build -t judge-worker .
 docker run --env-file .env judge-worker
 ```
 
-The final image contains no TypeScript source, no dev dependencies, and no build tooling.
-
 ---
 
-## Pending TODOs for api-http
+## api-http contract (internal PATCH)
 
-The worker calls two internal `api-http` endpoints that do not exist yet. These must be implemented before the full pipeline works end-to-end:
+The **submit** worker expects `api-http` to expose authenticated internal routes (Bearer `BACKEND_INTERNAL_SECRET`). Implement or verify these on the backend:
 
-### 1. `PATCH /api/internal/submissions/dsa/:dsaSubmissionId`
+### `PATCH /api/internal/submissions/dsa/:dsaSubmissionId`
 
-Must update the `DsaSubmission` row with:
+Body (JSON):
 
 | Field | Type |
-|---|---|
+|-------|------|
 | `status` | `"accepted" \| "wrong_answer" \| "time_limit_exceeded" \| "runtime_error"` |
 | `pointsEarned` | `number` |
 | `testCasesPassed` | `number` |
 | `totalTestCases` | `number` |
 | `executionTime` | `number \| null` |
 
-### 2. `PATCH /api/internal/attempts/:attemptId/score`
+### `PATCH /api/internal/attempts/:attemptId/score`
 
-Must atomically increment `ContestAttempt.totalPoints`:
+Body: `{ "pointsToAdd": number }` — should atomically increment contest attempt total score (e.g. Prisma `increment`).
 
-```prisma
-await prisma.contestAttempt.update({
-  where: { id: attemptId },
-  data: { totalPoints: { increment: pointsToAdd } },
-});
-```
-
-Both endpoints should validate the `Authorization: Bearer <BACKEND_INTERNAL_SECRET>` header.
+**Run flow** does not use these endpoints; it only needs Redis + BullMQ alignment with `judge-worker`.
 
 ---
 
 ## Dependencies
 
 | Package | Purpose |
-|---|---|
-| `bullmq` | Redis-backed job queue (worker API, `UnrecoverableError`) |
-| `ioredis` | Redis client required by BullMQ |
-| `axios` | HTTP client for Judge0 and backend API calls |
-| `zod` | Runtime job payload validation |
-| `pino` | Structured JSON logger |
-| `pino-pretty` | Human-readable log output in development |
-| `typescript` | (dev) TypeScript compiler |
-| `@types/node` | (dev) Node.js type definitions |
-| `tsx` | (dev) TypeScript execution + watch mode for development |
+|---------|---------|
+| `bullmq` | Workers, queues, `UnrecoverableError` |
+| `ioredis` | Redis (BullMQ connection + `publish`) |
+| `axios` | Judge0 + `api-http` |
+| `zod` | Job payload validation |
+| `pino` / `pino-pretty` | Logging |
+| `typescript`, `tsx`, `@types/node` | Dev / build |
