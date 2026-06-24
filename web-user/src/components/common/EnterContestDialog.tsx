@@ -14,7 +14,6 @@ import {
   Trophy,
   Clock,
   Code,
-  ArrowRight,
   AlertCircle,
   CheckCircle2,
   Ban,

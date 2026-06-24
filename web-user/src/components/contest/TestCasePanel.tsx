@@ -11,7 +11,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { formatHarnessStdoutForDisplay } from "@/lib/runStdout";
 
 
 function formatTestCaseInput(
@@ -102,7 +101,6 @@ const TestCasePanel = ({
   results,
   isRunning,
   signature,
-  runOutput,
 }: TestCasePanelProps) => {
   const params = signature?.parameters ?? [];
   const hasSignature = params.length > 0;

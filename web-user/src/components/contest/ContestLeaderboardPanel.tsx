@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { ArrowUp, ArrowDown } from "lucide-react";
 
 /** Dummy leaderboard entry for real-time demo */
 interface LeaderboardEntry {
