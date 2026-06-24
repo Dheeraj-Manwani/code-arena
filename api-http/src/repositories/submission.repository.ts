@@ -26,17 +26,6 @@ export const getMcqSubmissionByAttempt = async (
   });
 };
 
-export const getDsaSubmissionByAttempt = async (
-  attemptId: number,
-  problemId: number
-) => {
-  return await prisma.dsaSubmission.findUnique({
-    where: {
-      attemptId_problemId: { attemptId, problemId },
-    },
-  });
-};
-
 export const createMcqSubmission = async (data: {
   userId: number;
   questionId: number;
@@ -122,9 +111,11 @@ export const getMcqSubmissionsByAttemptIds = async (attemptIds: number[]) => {
 
 export const getDsaSubmissionsByAttemptIds = async (attemptIds: number[]) => {
   if (attemptIds.length === 0) return [];
+  // problemId is needed to score by MAX per (attempt, problem) since DSA problems
+  // allow re-submission (issues.md §4.2).
   return await prisma.dsaSubmission.findMany({
     where: { attemptId: { in: attemptIds } },
-    select: { attemptId: true, pointsEarned: true },
+    select: { attemptId: true, problemId: true, pointsEarned: true },
   });
 };
 
@@ -149,6 +140,7 @@ export const getDsaSubmissionsByAttemptId = async (attemptId: number) => {
       pointsEarned: true,
       testCasesPassed: true,
       totalTestCases: true,
+      submittedAt: true,
     },
   });
 };

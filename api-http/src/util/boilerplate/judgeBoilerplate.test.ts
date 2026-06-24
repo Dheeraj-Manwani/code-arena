@@ -52,49 +52,79 @@ describe("generateJudgeBoilerplate (twoSum, literal types)", () => {
   });
 });
 
-describe("stripUserLogging (via generateJudgeBoilerplate)", () => {
-  it("removes console.* from the JS harness", () => {
-    const code = "function f(){ console.log('SECRET_JS'); return 1; }";
+describe("user output suppression (issues.md §7.1)", () => {
+  // The harness no longer strips print/log statements from source; instead it
+  // redirects user stdout to a sink around the call. User code is preserved
+  // verbatim, and the harness embeds the redirection scaffolding.
+  it("preserves user code verbatim (no source-level stripping)", () => {
+    const code = "function f(){ console.log('USER_DEBUG'); return 1; }";
     const out = generateJudgeBoilerplate(
-      { ...MANUAL_SIGNATURE, functionName: "f", parameters: [] },
+      { ...MANUAL_SIGNATURE, functionName: "f", returnType: "int", parameters: [] },
       code,
       [{ input: "[]", expectedOutput: "1" }]
     );
-    expect(out.js).not.toContain("SECRET_JS");
+    expect(out.js).toContain("USER_DEBUG");
   });
 
-  it("removes print(...) from the Python harness", () => {
-    const code = "def f():\n    print('SECRET_PY')\n    return 1";
+  it("redirects user stdout to a sink in every language harness", () => {
     const out = generateJudgeBoilerplate(
-      { ...MANUAL_SIGNATURE, functionName: "f", parameters: [] },
-      code,
+      { ...MANUAL_SIGNATURE, functionName: "f", returnType: "int", parameters: [] },
+      "function f(){ return 1; }",
       [{ input: "[]", expectedOutput: "1" }]
     );
-    expect(out.python).not.toContain("SECRET_PY");
-  });
-
-  it("removes cout from the C++ harness", () => {
-    const code = "int f(){ cout << \"SECRET_CPP\"; return 1; }";
-    const out = generateJudgeBoilerplate(
-      { ...MANUAL_SIGNATURE, functionName: "f", parameters: [] },
-      code,
-      [{ input: "[]", expectedOutput: "1" }]
-    );
-    expect(out.cpp).not.toContain("SECRET_CPP");
-  });
-
-  it("removes System.out.println from the Java harness", () => {
-    const code = "int f(){ System.out.println(\"SECRET_JAVA\"); return 1; }";
-    const out = generateJudgeBoilerplate(
-      { ...MANUAL_SIGNATURE, functionName: "f", parameters: [] },
-      code,
-      [{ input: "[]", expectedOutput: "1" }]
-    );
-    expect(out.java).not.toContain("SECRET_JAVA");
+    expect(out.cpp).toContain("std::cout.rdbuf(_sink.rdbuf())"); // C++ buffer swap
+    expect(out.java).toContain("System.setOut("); // Java sink
+    expect(out.js).toContain("console.log = function"); // JS console suppression
+    expect(out.python).toContain("redirect_stdout"); // Python context manager
   });
 });
 
-describe("ListNode/TreeNode support (documents current half-implemented behavior)", () => {
+describe("output comparison + verdict markers (issues.md §7.2)", () => {
+  it("emits PASS/FAIL markers and embeds the expected value in every harness", () => {
+    const out = generateJudgeBoilerplate(MANUAL_SIGNATURE, SAMPLE_USER_CODE, MANUAL_TEST_CASES);
+    for (const lang of LANGS) {
+      expect(out[lang]).toContain(JUDGE_OUTPUT_MARKERS.PASS);
+      expect(out[lang]).toContain(JUDGE_OUTPUT_MARKERS.FAIL);
+    }
+    // C++/Java build a typed `expected` literal from expectedOutput and compare it.
+    expect(out.cpp).toContain("expected =");
+    expect(out.java).toContain("expected =");
+  });
+
+  it("uses an epsilon tolerance for double / double[] (not exact ==)", () => {
+    const doubleSig: BoilerplateSignature = {
+      functionName: "avg",
+      returnType: "double",
+      parameters: [{ name: "nums", type: "double[]" }],
+      className: "Solution",
+      useClassWrapper: true,
+    };
+    const out = generateJudgeBoilerplate(doubleSig, "double avg(...)", [
+      { input: "[[1.0,2.0]]", expectedOutput: "1.5" },
+    ]);
+    expect(out.cpp).toContain("std::fabs(result - expected) < 1e-6");
+    expect(out.java).toContain("Math.abs(result - expected) < 1e-6");
+    // Scalar doubles must NOT fall back to operator==.
+    expect(out.cpp).not.toContain("(result == expected)");
+  });
+
+  it("compares double[] element-wise with epsilon", () => {
+    const sig: BoilerplateSignature = {
+      functionName: "scale",
+      returnType: "double[]",
+      parameters: [{ name: "nums", type: "double[]" }],
+      className: "Solution",
+      useClassWrapper: true,
+    };
+    const out = generateJudgeBoilerplate(sig, "...", [
+      { input: "[[1.0]]", expectedOutput: "[2.0]" },
+    ]);
+    expect(out.cpp).toContain("std::fabs(result[_k] - expected[_k]) >= 1e-6");
+    expect(out.java).toContain("Math.abs(result[_k] - expected[_k]) < 1e-6");
+  });
+});
+
+describe("ListNode/TreeNode (issues.md §7.3 — rejected at creation, harness is defensive)", () => {
   const listSig: BoilerplateSignature = {
     functionName: "reverseList",
     returnType: "ListNode",
@@ -106,16 +136,12 @@ describe("ListNode/TreeNode support (documents current half-implemented behavior
     { input: "[[1,2,3]]", expectedOutput: "[3,2,1]" },
   ]);
 
-  it("emits the ListNode struct/class scaffolding for C++ and Java", () => {
+  it("still emits ListNode scaffolding (rejection happens at problem creation, see schema tests)", () => {
     expect(out.cpp).toContain("struct ListNode");
     expect(out.java).toContain("class ListNode");
   });
 
-  it("KNOWN ISSUE (issues.md §7.3): test-case blocks are skipped for non-literal types", () => {
-    // Until the literal builders support ListNode/TreeNode, the harness emits a
-    // skip comment instead of a real call, so no __CASE__ markers are produced and
-    // the worker derives runtime_error. This test pins that behavior so a future
-    // fix is a deliberate, visible change.
+  it("defensively skips unsupported-type test blocks if such a signature ever reaches the generator", () => {
     expect(out.cpp).toContain("unsupported types");
     expect(out.java).toContain("unsupported types");
   });

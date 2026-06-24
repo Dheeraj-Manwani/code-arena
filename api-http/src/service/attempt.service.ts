@@ -37,14 +37,22 @@ export const getUserAttempts = async (
     attemptRepo.getLeaderboardRanksForUserContests(userId, contestIds),
   ]);
 
-  // Score per attempt = sum of earned points across MCQ + DSA submissions.
-  // (DsaSubmission is unique per (attempt, problem), so a plain sum is the best score.)
+  // Score per attempt = MCQ points + DSA points. MCQ is unique per (attempt,
+  // question), so a plain sum is correct. DSA allows re-submission (issues.md
+  // §4.2), so we first take MAX(pointsEarned) per (attempt, problem) before summing.
   const pointsByAttempt = new Map<number, number>();
   for (const s of mcqSubs) {
     pointsByAttempt.set(s.attemptId, (pointsByAttempt.get(s.attemptId) ?? 0) + s.pointsEarned);
   }
+  const bestDsaByAttemptProblem = new Map<string, number>();
   for (const s of dsaSubs) {
-    pointsByAttempt.set(s.attemptId, (pointsByAttempt.get(s.attemptId) ?? 0) + s.pointsEarned);
+    const key = `${s.attemptId}:${s.problemId}`;
+    const prev = bestDsaByAttemptProblem.get(key) ?? 0;
+    if (s.pointsEarned > prev) bestDsaByAttemptProblem.set(key, s.pointsEarned);
+  }
+  for (const [key, points] of bestDsaByAttemptProblem) {
+    const attemptId = Number(key.split(":")[0]);
+    pointsByAttempt.set(attemptId, (pointsByAttempt.get(attemptId) ?? 0) + points);
   }
 
   const rankByContest = new Map(ranks.map((r) => [r.contestId, r.rank]));
@@ -88,7 +96,21 @@ export const getAttemptResults = async (
   ]);
 
   const mcqByQuestion = new Map(mcqSubs.map((s) => [s.questionId, s]));
-  const dsaByProblem = new Map(dsaSubs.map((s) => [s.problemId, s]));
+
+  // DSA allows re-submission (issues.md §4.2): keep the best submission per problem
+  // — highest pointsEarned, tie-broken by the most recent attempt.
+  type DsaSub = (typeof dsaSubs)[number];
+  const dsaByProblem = new Map<number, DsaSub>();
+  for (const s of dsaSubs) {
+    const prev = dsaByProblem.get(s.problemId);
+    if (
+      !prev ||
+      s.pointsEarned > prev.pointsEarned ||
+      (s.pointsEarned === prev.pointsEarned && s.submittedAt > prev.submittedAt)
+    ) {
+      dsaByProblem.set(s.problemId, s);
+    }
+  }
 
   const questions: AttemptResultQuestion[] = attempt.contest.questions.map((q) => {
     if (q.mcq) {

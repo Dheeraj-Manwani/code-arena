@@ -15,6 +15,8 @@ function status(overrides: Partial<Judge0StatusResponse>): Judge0StatusResponse 
   };
 }
 
+// The harness compares each result to the expected output and emits __PASS__ /
+// __FAIL__ / __ERROR__ per case. parseStdout only tallies those markers.
 describe("parseStdout", () => {
   it("returns runtime_error for empty stdout", () => {
     expect(parseStdout("", 3)).toEqual({
@@ -25,8 +27,11 @@ describe("parseStdout", () => {
     expect(parseStdout("   \n  ", 3).verdict).toBe("runtime_error");
   });
 
-  it("returns accepted when all cases emit __OUTPUT__", () => {
-    const stdout = ["__CASE__0", "__OUTPUT__[0,1]", "__CASE__1", "__OUTPUT__[1,2]"].join("\n");
+  it("returns accepted when all cases emit __PASS__", () => {
+    const stdout = [
+      "__CASE__0", "__OUTPUT__[0,1]", "__PASS__",
+      "__CASE__1", "__OUTPUT__[1,2]", "__PASS__",
+    ].join("\n");
     expect(parseStdout(stdout, 2)).toEqual({
       testCasesPassed: 2,
       verdict: "accepted",
@@ -34,29 +39,44 @@ describe("parseStdout", () => {
     });
   });
 
-  it("returns wrong_answer when only some cases pass", () => {
-    const stdout = ["__CASE__0", "__OUTPUT__[0,1]", "__CASE__1"].join("\n");
+  it("returns wrong_answer when a case emits __FAIL__", () => {
+    const stdout = [
+      "__CASE__0", "__OUTPUT__[0,1]", "__PASS__",
+      "__CASE__1", "__OUTPUT__[9,9]", "__FAIL__",
+    ].join("\n");
     const result = parseStdout(stdout, 2);
     expect(result.verdict).toBe("wrong_answer");
     expect(result.testCasesPassed).toBe(1);
     expect(result.stoppedAtCase).toBe(1);
   });
 
+  it("returns wrong_answer when a case is missing a verdict marker", () => {
+    const stdout = ["__CASE__0", "__OUTPUT__[0,1]", "__PASS__", "__CASE__1"].join("\n");
+    const result = parseStdout(stdout, 2);
+    expect(result.verdict).toBe("wrong_answer");
+    expect(result.testCasesPassed).toBe(1);
+  });
+
   it("stops on __ERROR__ and reports runtime_error with the failing case", () => {
-    const stdout = ["__CASE__0", "__OUTPUT__[0,1]", "__CASE__1", "__ERROR__boom"].join("\n");
+    const stdout = [
+      "__CASE__0", "__OUTPUT__[0,1]", "__PASS__",
+      "__CASE__1", "__ERROR__boom",
+    ].join("\n");
     const result = parseStdout(stdout, 3);
     expect(result.verdict).toBe("runtime_error");
     expect(result.testCasesPassed).toBe(1);
     expect(result.stoppedAtCase).toBe(1);
   });
 
-  it("returns runtime_error when no case passes", () => {
-    const stdout = ["__CASE__0", "__CASE__1"].join("\n");
-    expect(parseStdout(stdout, 2).verdict).toBe("runtime_error");
+  it("returns wrong_answer when cases run but none pass", () => {
+    const stdout = ["__CASE__0", "__OUTPUT__a", "__FAIL__", "__CASE__1", "__OUTPUT__b", "__FAIL__"].join("\n");
+    const result = parseStdout(stdout, 2);
+    expect(result.verdict).toBe("wrong_answer");
+    expect(result.testCasesPassed).toBe(0);
   });
 
   it("treats extra passing cases (>= total) as accepted", () => {
-    const stdout = ["__CASE__0", "__OUTPUT__a", "__CASE__1", "__OUTPUT__b"].join("\n");
+    const stdout = ["__CASE__0", "__OUTPUT__a", "__PASS__", "__CASE__1", "__OUTPUT__b", "__PASS__"].join("\n");
     expect(parseStdout(stdout, 1).verdict).toBe("accepted");
   });
 });
@@ -95,10 +115,17 @@ describe("deriveVerdict", () => {
   });
 
   it("status 3 with full passing stdout is accepted", () => {
-    const stdout = ["__CASE__0", "__OUTPUT__a", "__CASE__1", "__OUTPUT__b"].join("\n");
+    const stdout = ["__CASE__0", "__OUTPUT__a", "__PASS__", "__CASE__1", "__OUTPUT__b", "__PASS__"].join("\n");
     const result = deriveVerdict(status({ stdout }), 2);
     expect(result.status).toBe("accepted");
     expect(result.testCasesPassed).toBe(2);
+  });
+
+  it("status 3 with a failing case is wrong_answer", () => {
+    const stdout = ["__CASE__0", "__OUTPUT__a", "__PASS__", "__CASE__1", "__OUTPUT__b", "__FAIL__"].join("\n");
+    const result = deriveVerdict(status({ stdout }), 2);
+    expect(result.status).toBe("wrong_answer");
+    expect(result.testCasesPassed).toBe(1);
   });
 
   it("converts Judge0 time (seconds) to milliseconds", () => {

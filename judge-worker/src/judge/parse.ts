@@ -8,14 +8,20 @@ export function parseStdout(stdout: string, totalTestCases: number): ParseResult
   const lines = stdout.split("\n");
   let currentCase = -1;
   let testCasesPassed = 0;
+  let sawCase = false;
+  let firstFailCase: number | null = null;
 
+  // The harness compares each result to the expected output and emits one of
+  // __PASS__ / __FAIL__ / __ERROR__ per case. The worker only tallies markers.
   for (const line of lines) {
     if (line.startsWith("__CASE__")) {
       currentCase = parseInt(line.slice("__CASE__".length), 10);
+      sawCase = true;
       continue;
     }
 
     if (line.startsWith("__ERROR__")) {
+      // A thrown exception in user code — terminal for this run.
       return {
         testCasesPassed,
         verdict: "runtime_error",
@@ -23,29 +29,27 @@ export function parseStdout(stdout: string, totalTestCases: number): ParseResult
       };
     }
 
-    if (line.startsWith("__OUTPUT__")) {
-      const result = line.slice("__OUTPUT__".length).trim();
-      // The harness embeds expected outputs; a match means stdout already reflects pass.
-      // Since we don't have expected outputs in the worker, we trust the harness:
-      // if __OUTPUT__ is emitted without a preceding __ERROR__, the test passed.
-      // However, the spec says "compare result to expectedOutput" — but expected outputs
-      // are NOT in the job payload. The harness itself prints __ERROR__ on mismatch.
-      // So if we see __OUTPUT__, the test case passed.
-      if (result !== undefined) {
-        testCasesPassed++;
-      }
+    if (line.startsWith("__PASS__")) {
+      testCasesPassed++;
+      continue;
+    }
+
+    if (line.startsWith("__FAIL__")) {
+      if (firstFailCase === null) firstFailCase = currentCase;
       continue;
     }
   }
 
-  if (testCasesPassed >= totalTestCases) {
+  if (testCasesPassed >= totalTestCases && totalTestCases > 0) {
     return { testCasesPassed, verdict: "accepted", stoppedAtCase: null };
   }
 
-  if (testCasesPassed > 0 && testCasesPassed < totalTestCases) {
-    return { testCasesPassed, verdict: "wrong_answer", stoppedAtCase: currentCase };
+  // Some cases ran (we saw __CASE__/__PASS__/__FAIL__) but not all passed → wrong answer.
+  if (sawCase) {
+    return { testCasesPassed, verdict: "wrong_answer", stoppedAtCase: firstFailCase };
   }
 
+  // No markers at all — the program produced no usable output (e.g. crashed before run).
   return { testCasesPassed: 0, verdict: "runtime_error", stoppedAtCase: null };
 }
 

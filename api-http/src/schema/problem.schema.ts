@@ -115,13 +115,34 @@ export const BoilerplateParamSchema = z.object({
   type: BoilerplateTypeKeyEnum,
 });
 
-export const BoilerplateSignatureSchema = z.object({
-  functionName: z.string(),
-  returnType: BoilerplateTypeKeyEnum,
-  parameters: z.array(BoilerplateParamSchema),
-  className: z.string(),
-  useClassWrapper: z.boolean(),
-});
+/**
+ * Linked-list / binary-tree problems are not judgeable by the literal-based
+ * harness, so we reject them at creation with a clear message rather than
+ * silently producing an unjudgeable problem (issues.md §7.3).
+ */
+const UNSUPPORTED_JUDGE_TYPES = new Set(["ListNode", "TreeNode"]);
+
+export const BoilerplateSignatureSchema = z
+  .object({
+    functionName: z.string(),
+    returnType: BoilerplateTypeKeyEnum,
+    parameters: z.array(BoilerplateParamSchema),
+    className: z.string(),
+    useClassWrapper: z.boolean(),
+  })
+  .superRefine((sig, ctx) => {
+    const offenders = new Set<string>();
+    if (UNSUPPORTED_JUDGE_TYPES.has(sig.returnType)) offenders.add(sig.returnType);
+    for (const p of sig.parameters) {
+      if (UNSUPPORTED_JUDGE_TYPES.has(p.type)) offenders.add(p.type);
+    }
+    if (offenders.size > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${[...offenders].join("/")} problems are not supported by the judge yet. Use array/primitive types (e.g. represent a linked list as int[]).`,
+      });
+    }
+  });
 
 export type BoilerplateSignature = z.infer<typeof BoilerplateSignatureSchema>;
 

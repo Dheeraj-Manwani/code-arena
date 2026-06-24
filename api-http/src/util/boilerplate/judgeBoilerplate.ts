@@ -1,12 +1,21 @@
 /**
  * JUDGE BOILERPLATE — Execution-facing code.
- * Wraps user's submitted code, loads test cases, runs them.
- * Generated programs NEVER print verdict strings; they only emit structured output
- * markers. Verdict computation (pass/fail/runtime error) happens outside (worker).
+ * Wraps user's submitted code, runs each test case, compares the result to the
+ * expected output *inside the harness*, and emits structured markers. The worker
+ * only tallies PASS/FAIL/ERROR markers — it does not need the expected outputs.
  *
- * Output format (per test case, two lines):
+ * Output format (per test case):
  *   __CASE__<index>
- *   __OUTPUT__<json-serialized result>   OR   __ERROR__<message>
+ *   __OUTPUT__<json-serialized actual result>   (omitted when the call throws)
+ *   __PASS__ | __FAIL__ | __ERROR__<message>
+ *
+ * Correctness:
+ *   - The harness builds an `expected` literal from the test case's expectedOutput
+ *     and compares it against the user's result. Floating-point types (double /
+ *     double[]) compare with an epsilon tolerance (issues.md §7.2).
+ *   - User stdout is redirected to a sink *only around the user call*, so debug
+ *     prints never pollute the marker stream (issues.md §7.1). No source-level
+ *     stripping of print/log statements is done.
  *
  * To log judge boilerplate locally: edit MANUAL_SIGNATURE, MANUAL_TEST_CASES, SAMPLE_USER_CODE below, then run: pnpm run judge-boilerplate
  */
@@ -23,8 +32,13 @@ const USER_CODE_PLACEHOLDER = "__USER_CODE__";
 export const JUDGE_OUTPUT_MARKERS = {
   CASE: "__CASE__",
   OUTPUT: "__OUTPUT__",
+  PASS: "__PASS__",
+  FAIL: "__FAIL__",
   ERROR: "__ERROR__",
 } as const;
+
+/** Tolerance for floating-point comparisons (issues.md §7.2). */
+const FLOAT_EPSILON = "1e-6";
 
 /** Primitives and array type keys we can generate literals for (no ListNode/TreeNode) */
 const LITERAL_TYPE_KEYS: BoilerplateTypeKey[] = [
@@ -110,20 +124,34 @@ function toJavaLiteral(val: unknown, typeKey: BoilerplateTypeKey): string {
   return "null";
 }
 
-function cppCompareExpr(returnType: BoilerplateTypeKey, resultVar: string, expectedLiteral: string): string {
-  if (returnType === "void") return "true";
-  if (LITERAL_TYPE_KEYS.includes(returnType)) return `${resultVar} == ${expectedLiteral}`;
-  return `${resultVar} == ${expectedLiteral}`;
+/**
+ * C++ boolean expression comparing `resultVar` to `expectedVar` for the given
+ * return type. double/double[] use an epsilon tolerance; void/object can't be
+ * compared meaningfully so they pass on successful execution.
+ */
+function cppCompareCode(returnType: BoilerplateTypeKey, resultVar: string, expectedVar: string): string {
+  if (returnType === "void" || returnType === "object") return "true";
+  if (returnType === "double") return `(std::fabs(${resultVar} - ${expectedVar}) < ${FLOAT_EPSILON})`;
+  if (returnType === "double[]")
+    return `([&]() -> bool { if (${resultVar}.size() != ${expectedVar}.size()) return false; for (size_t _k = 0; _k < ${resultVar}.size(); ++_k) if (std::fabs(${resultVar}[_k] - ${expectedVar}[_k]) >= ${FLOAT_EPSILON}) return false; return true; }())`;
+  // int, long, boolean, string, int[]/long[]/boolean[]/string[]/int[][] — operator== / vector== / std::string== all work.
+  return `(${resultVar} == ${expectedVar})`;
 }
 
-function javaCompareExpr(returnType: BoilerplateTypeKey, resultVar: string, expectedLiteral: string): string {
-  if (returnType === "void") return "true";
-  if (returnType === "int[]" || returnType === "long[]" || returnType === "double[]" || returnType === "boolean[]")
-    return `java.util.Arrays.equals(${resultVar}, ${expectedLiteral})`;
-  if (returnType === "string[]" || returnType === "int[][]")
-    return `java.util.Arrays.deepEquals(${resultVar}, ${expectedLiteral})`;
-  if (returnType === "string") return `java.util.Objects.equals(${resultVar}, ${expectedLiteral})`;
-  return `(${resultVar} == ${expectedLiteral})`;
+/**
+ * Java boolean expression comparing `resultVar` to `expectedVar`. double/double[]
+ * use epsilon; arrays use Arrays.equals/deepEquals; void/object pass on success.
+ */
+function javaCompareCode(returnType: BoilerplateTypeKey, resultVar: string, expectedVar: string): string {
+  if (returnType === "void" || returnType === "object") return "true";
+  if (returnType === "double") return `(Math.abs(${resultVar} - ${expectedVar}) < ${FLOAT_EPSILON})`;
+  if (returnType === "double[]")
+    return `(${resultVar}.length == ${expectedVar}.length && java.util.stream.IntStream.range(0, ${resultVar}.length).allMatch(_k -> Math.abs(${resultVar}[_k] - ${expectedVar}[_k]) < ${FLOAT_EPSILON}))`;
+  if (returnType === "int[]" || returnType === "long[]" || returnType === "boolean[]" || returnType === "string[]")
+    return `java.util.Arrays.equals(${resultVar}, ${expectedVar})`;
+  if (returnType === "int[][]") return `java.util.Arrays.deepEquals(${resultVar}, ${expectedVar})`;
+  if (returnType === "string") return `java.util.Objects.equals(${resultVar}, ${expectedVar})`;
+  return `(${resultVar} == ${expectedVar})`;
 }
 
 /** Returns C++ code that prints the value of resultVar in JSON-like form to std::cout (no newline). */
@@ -171,15 +199,33 @@ function signatureUsesLiteralTypesOnly(sig: BoilerplateSignature): boolean {
   return LITERAL_TYPE_KEYS.includes(sig.returnType);
 }
 
-/** Build one test case block for C++: declare args, call function, emit __CASE__/__OUTPUT__ or __ERROR__ (no verdicts, no early exit). */
+const CPP_TYPE_MAP: Partial<Record<BoilerplateTypeKey, string>> = {
+  int: "int", long: "long long", double: "double", boolean: "bool", string: "string",
+  "int[]": "vector<int>", "long[]": "vector<long long>", "double[]": "vector<double>",
+  "boolean[]": "vector<bool>", "string[]": "vector<string>", "int[][]": "vector<vector<int>>",
+};
+const cppType = (t: BoilerplateTypeKey): string => CPP_TYPE_MAP[t] ?? "void";
+
+/** Parse a test case's JSON expected output; fall back to the raw string on parse failure. */
+function parseExpected(tc: SerializedTestCase): unknown {
+  try {
+    return JSON.parse(tc.expectedOutput);
+  } catch {
+    return tc.expectedOutput;
+  }
+}
+
+/**
+ * Build one test case block for C++: declare args + expected, call the user
+ * function (with user stdout suppressed), compare to expected, and emit
+ * __CASE__/__OUTPUT__/__PASS__/__FAIL__/__ERROR__. No verdict strings, no early exit.
+ */
 function buildCppTestCaseBlock(
   sig: BoilerplateSignature,
   tc: SerializedTestCase,
   index: number
 ): string {
-  const CASE = JUDGE_OUTPUT_MARKERS.CASE;
-  const OUTPUT = JUDGE_OUTPUT_MARKERS.OUTPUT;
-  const ERROR = JUDGE_OUTPUT_MARKERS.ERROR;
+  const { CASE, OUTPUT, PASS, FAIL, ERROR } = JUDGE_OUTPUT_MARKERS;
   if (!signatureUsesLiteralTypesOnly(sig)) {
     return `    { // Test ${index + 1}: unsupported types (e.g. ListNode/TreeNode) skipped\n    }`;
   }
@@ -196,33 +242,47 @@ function buildCppTestCaseBlock(
   for (let i = 0; i < paramTypes.length; i++) {
     const t = paramTypes[i];
     const name = paramNames[i] || `arg${i}`;
-    const literal = toCppLiteral(args[i], t);
-    const cppType = t === "int[]" ? "vector<int>" : t === "long[]" ? "vector<long long>" : t === "double[]" ? "vector<double>" : t === "boolean[]" ? "vector<bool>" : t === "string[]" ? "vector<string>" : t === "int[][]" ? "vector<vector<int>>" : t === "int" ? "int" : t === "long" ? "long long" : t === "double" ? "double" : t === "boolean" ? "bool" : "string";
-    lines.push(`    ${cppType} ${name} = ${literal};`);
+    lines.push(`    ${cppType(t)} ${name} = ${toCppLiteral(args[i], t)};`);
   }
   const retType = sig.returnType;
-  const resultVar = "result";
-  const cppRetType = retType === "int[]" ? "vector<int>" : retType === "long[]" ? "vector<long long>" : retType === "double[]" ? "vector<double>" : retType === "boolean[]" ? "vector<bool>" : retType === "string[]" ? "vector<string>" : retType === "int[][]" ? "vector<vector<int>>" : retType === "int" ? "int" : retType === "long" ? "long long" : retType === "double" ? "double" : retType === "boolean" ? "bool" : retType === "string" ? "string" : "void";
   const argList = paramNames.join(", ");
   lines.push(`    std::cout << "${CASE}${index}" << std::endl;`);
-  if (retType === "void") {
-    lines.push(`    try { ${sig.functionName}(${argList}); std::cout << "${OUTPUT}"; std::cout << "null" << std::endl; } catch (const std::exception& e) { std::cout << "${ERROR}" << e.what() << std::endl; } catch (...) { std::cout << "${ERROR}unknown exception" << std::endl; }`);
+  // Suppress user stdout only around the user call so debug prints never pollute markers.
+  const redirect = `std::streambuf* _old = std::cout.rdbuf(); std::ostringstream _sink;`;
+  // void/object can't be compared meaningfully — pass on successful execution.
+  if (retType === "void" || retType === "object") {
+    lines.push(`    { ${redirect}
+      try { std::cout.rdbuf(_sink.rdbuf()); ${sig.functionName}(${argList}); std::cout.rdbuf(_old); std::cout << "${OUTPUT}null" << std::endl; std::cout << "${PASS}" << std::endl; }
+      catch (const std::exception& e) { std::cout.rdbuf(_old); std::cout << "${ERROR}" << e.what() << std::endl; }
+      catch (...) { std::cout.rdbuf(_old); std::cout << "${ERROR}unknown exception" << std::endl; } }`);
   } else {
-    lines.push(`    ${cppRetType} ${resultVar};`);
-    lines.push(`    try { ${resultVar} = ${sig.functionName}(${argList}); std::cout << "${OUTPUT}"; ${cppSerializeToOutput(retType, resultVar)} std::cout << std::endl; } catch (const std::exception& e) { std::cout << "${ERROR}" << e.what() << std::endl; } catch (...) { std::cout << "${ERROR}unknown exception" << std::endl; }`);
+    lines.push(`    ${cppType(retType)} expected = ${toCppLiteral(parseExpected(tc), retType)};`);
+    lines.push(`    ${cppType(retType)} result;`);
+    lines.push(`    { ${redirect}
+      try { std::cout.rdbuf(_sink.rdbuf()); result = ${sig.functionName}(${argList}); std::cout.rdbuf(_old); std::cout << "${OUTPUT}"; ${cppSerializeToOutput(retType, "result")} std::cout << std::endl; std::cout << (${cppCompareCode(retType, "result", "expected")} ? "${PASS}" : "${FAIL}") << std::endl; }
+      catch (const std::exception& e) { std::cout.rdbuf(_old); std::cout << "${ERROR}" << e.what() << std::endl; }
+      catch (...) { std::cout.rdbuf(_old); std::cout << "${ERROR}unknown exception" << std::endl; } }`);
   }
   return `    { // Test ${index + 1}\n${lines.join("\n")}\n    }`;
 }
 
-/** Build one test case block for Java: declare args, call static method, emit markers. */
+const JAVA_TYPE_MAP: Partial<Record<BoilerplateTypeKey, string>> = {
+  int: "int", long: "long", double: "double", boolean: "boolean", string: "String",
+  "int[]": "int[]", "long[]": "long[]", "double[]": "double[]", "boolean[]": "boolean[]",
+  "string[]": "String[]", "int[][]": "int[][]",
+};
+const javaType = (t: BoilerplateTypeKey): string => JAVA_TYPE_MAP[t] ?? "void";
+
+/**
+ * Build one test case block for Java: declare args + expected, call the static
+ * method (with user stdout suppressed), compare to expected, and emit markers.
+ */
 function buildJavaTestCaseBlock(
   sig: BoilerplateSignature,
   tc: SerializedTestCase,
   index: number
 ): string {
-  const CASE = JUDGE_OUTPUT_MARKERS.CASE;
-  const OUTPUT = JUDGE_OUTPUT_MARKERS.OUTPUT;
-  const ERROR = JUDGE_OUTPUT_MARKERS.ERROR;
+  const { CASE, OUTPUT, PASS, FAIL, ERROR } = JUDGE_OUTPUT_MARKERS;
   if (!signatureUsesLiteralTypesOnly(sig)) {
     return `        { // Test ${index + 1}: unsupported types (e.g. ListNode/TreeNode) skipped\n        }`;
   }
@@ -239,26 +299,26 @@ function buildJavaTestCaseBlock(
   for (let i = 0; i < paramTypes.length; i++) {
     const t = paramTypes[i];
     const name = paramNames[i] || `arg${i}`;
-    const literal = toJavaLiteral(args[i], t);
-    const javaType = t === "int[]" ? "int[]" : t === "long[]" ? "long[]" : t === "double[]" ? "double[]" : t === "boolean[]" ? "boolean[]" : t === "string[]" ? "String[]" : t === "int[][]" ? "int[][]" : t === "int" || t === "long" ? t : t === "double" ? "double" : t === "boolean" ? "boolean" : "String";
-    lines.push(`            ${javaType} ${name} = ${literal};`);
+    lines.push(`            ${javaType(t)} ${name} = ${toJavaLiteral(args[i], t)};`);
   }
   const retType = sig.returnType;
-  const resultVar = "result";
-  const javaRetType = retType === "int[]" ? "int[]" : retType === "long[]" ? "long[]" : retType === "double[]" ? "double[]" : retType === "boolean[]" ? "boolean[]" : retType === "string[]" ? "String[]" : retType === "int[][]" ? "int[][]" : retType === "int" || retType === "long" ? retType : retType === "double" ? "double" : retType === "boolean" ? "boolean" : retType === "string" ? "String" : "void";
   const argList = paramNames.join(", ");
   lines.push(`            System.out.println("${CASE}${index}");`);
-  if (retType === "void") {
+  // Suppress user stdout only around the user call so debug prints never pollute markers.
+  const save = `java.io.PrintStream _real = System.out;`;
+  const sink = `System.setOut(new java.io.PrintStream(new java.io.ByteArrayOutputStream()));`;
+  // void/object can't be compared meaningfully — pass on successful execution.
+  if (retType === "void" || retType === "object") {
     lines.push(
-      `            try { ${sig.className}.${sig.functionName}(${argList}); System.out.println("${OUTPUT}null"); } catch (Throwable e) { System.out.println("${ERROR}" + e.toString()); }`
+      `            { ${save} try { ${sink} ${sig.className}.${sig.functionName}(${argList}); System.setOut(_real); System.out.println("${OUTPUT}null"); System.out.println("${PASS}"); } catch (Throwable e) { System.setOut(_real); System.out.println("${ERROR}" + e.toString()); } }`
     );
   } else {
-    lines.push(`            ${javaRetType} ${resultVar};`);
+    lines.push(`            ${javaType(retType)} expected = ${toJavaLiteral(parseExpected(tc), retType)};`);
     lines.push(
-      `            try { ${resultVar} = ${sig.className}.${sig.functionName}(${argList}); System.out.print("${OUTPUT}"); ${javaSerializeToOutput(
+      `            { ${save} try { ${sink} ${javaType(retType)} result = ${sig.className}.${sig.functionName}(${argList}); System.setOut(_real); System.out.print("${OUTPUT}"); ${javaSerializeToOutput(
         retType,
-        resultVar
-      )} System.out.println(); } catch (Throwable e) { System.out.println("${ERROR}" + e.toString()); }`
+        "result"
+      )} System.out.println(); System.out.println(${javaCompareCode(retType, "result", "expected")} ? "${PASS}" : "${FAIL}"); } catch (Throwable e) { System.setOut(_real); System.out.println("${ERROR}" + e.toString()); } }`
     );
   }
   return `        { // Test ${index + 1}\n${lines.join("\n")}\n        }`;
@@ -319,8 +379,9 @@ function buildCppJudge(
   return `#include <bits/stdc++.h>
 using namespace std;${listNodeStruct}${treeNodeStruct}
 /*
- * Judge: runs each test case, prints __CASE__<i> then __OUTPUT__<result> or __ERROR__<msg>.
- * Verdict is computed outside by parsing stdout.
+ * Judge: runs each test case, compares the result to the expected value, and prints
+ * __CASE__<i>, __OUTPUT__<result>, then __PASS__/__FAIL__ (or __ERROR__<msg> on throw).
+ * The worker only tallies these markers.
  */
 ${USER_CODE_PLACEHOLDER}
 
@@ -348,8 +409,9 @@ function buildJavaJudge(
   return `import java.util.*;
 ${listNodeClass}${treeNodeClass}
 /*
- * Judge: loops over test cases, calls ${sig.className}.${sig.functionName}(...) for each input,
- * and emits per-testcase markers (__CASE__/__OUTPUT__/__ERROR__). Verdict is computed outside.
+ * Judge: loops over test cases, calls ${sig.className}.${sig.functionName}(...), compares the
+ * result to the expected value, and emits per-testcase markers
+ * (__CASE__/__OUTPUT__/__PASS__/__FAIL__/__ERROR__). The worker only tallies them.
  */
 ${USER_CODE_PLACEHOLDER}
 
@@ -370,25 +432,45 @@ function buildJsJudge(
 ): string {
   const testCasesJson = JSON.stringify(testCases);
 
+  const { CASE, OUTPUT, PASS, FAIL, ERROR } = JUDGE_OUTPUT_MARKERS;
   return `/**
-* Judge harness: loads test cases, invokes user function, and emits per-testcase output.
-* User code does not touch I/O; execution is deterministic.
+* Judge harness: loads test cases, invokes the user function, compares the result
+* to the expected output (numeric comparisons use an epsilon tolerance), and emits
+* per-testcase markers. User stdout (console.log) is suppressed so it can't pollute
+* the marker stream; markers are written straight to process.stdout.
  */
 ${USER_CODE_PLACEHOLDER}
 
 (function() {
-    const MARKERS = { CASE: "${JUDGE_OUTPUT_MARKERS.CASE}", OUTPUT: "${JUDGE_OUTPUT_MARKERS.OUTPUT}", ERROR: "${JUDGE_OUTPUT_MARKERS.ERROR}" };
+    const MARKERS = { CASE: "${CASE}", OUTPUT: "${OUTPUT}", PASS: "${PASS}", FAIL: "${FAIL}", ERROR: "${ERROR}" };
+    const _emit = (s) => process.stdout.write(s + "\\n");
+    // Suppress user debug output (issues.md §7.1) — markers bypass console.log.
+    console.log = function() {};
+    console.info = console.debug = console.warn = console.error = function() {};
+    const _eq = (a, b) => {
+        if (typeof a === "number" && typeof b === "number") return Math.abs(a - b) < ${FLOAT_EPSILON};
+        if (Array.isArray(a) && Array.isArray(b)) {
+            if (a.length !== b.length) return false;
+            for (let i = 0; i < a.length; i++) if (!_eq(a[i], b[i])) return false;
+            return true;
+        }
+        if (a && b && typeof a === "object" && typeof b === "object") return JSON.stringify(a) === JSON.stringify(b);
+        return a === b;
+    };
     const testCases = ${testCasesJson};
     for (let i = 0; i < testCases.length; i++) {
         const tc = testCases[i];
-        console.log(MARKERS.CASE + i);
+        _emit(MARKERS.CASE + i);
         try {
             const args = JSON.parse(tc.input);
             const actual = ${sig.functionName}(...(Array.isArray(args) ? args : [args]));
-            console.log(MARKERS.OUTPUT + JSON.stringify(actual));
+            let expected;
+            try { expected = JSON.parse(tc.expectedOutput); } catch (_) { expected = tc.expectedOutput; }
+            _emit(MARKERS.OUTPUT + JSON.stringify(actual));
+            _emit(_eq(actual, expected) ? MARKERS.PASS : MARKERS.FAIL);
         } catch (e) {
             const msg = e && e.message ? e.message : String(e);
-            console.log(MARKERS.ERROR + msg);
+            _emit(MARKERS.ERROR + msg);
         }
     }
 })();
@@ -408,17 +490,34 @@ function buildPythonJudge(
 
   const functionName = toSnakeCase(sig.functionName);
 
+  const { CASE, OUTPUT, PASS, FAIL, ERROR } = JUDGE_OUTPUT_MARKERS;
   return `"""
-Judge harness: loads test cases, calls user function, and emits per-testcase output.
-User code never calls input(); judge controls execution.
+Judge harness: loads test cases, calls the user function, compares the result to
+the expected output (numbers compare with an epsilon tolerance), and emits markers.
+User stdout is redirected to a sink around the call so prints can't pollute markers.
 """
-import json
+import json, io, sys
+from contextlib import redirect_stdout
 
 ${USER_CODE_PLACEHOLDER}
 
-CASE = "${JUDGE_OUTPUT_MARKERS.CASE}"
-OUTPUT = "${JUDGE_OUTPUT_MARKERS.OUTPUT}"
-ERROR = "${JUDGE_OUTPUT_MARKERS.ERROR}"
+CASE = "${CASE}"
+OUTPUT = "${OUTPUT}"
+PASS = "${PASS}"
+FAIL = "${FAIL}"
+ERROR = "${ERROR}"
+_EPS = ${FLOAT_EPSILON}
+
+
+def _eq(a, b):
+    if isinstance(a, bool) or isinstance(b, bool):
+        return a == b
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        return abs(a - b) < _EPS
+    if isinstance(a, list) and isinstance(b, list):
+        return len(a) == len(b) and all(_eq(x, y) for x, y in zip(a, b))
+    return a == b
+
 
 if __name__ == "__main__":
     test_cases = json.loads("${testCasesEscaped}")
@@ -426,9 +525,16 @@ if __name__ == "__main__":
         print(f"{CASE}{index}")
         try:
             args = json.loads(tc["input"])
-            actual = ${functionName}(*(args if isinstance(args, list) else [args]))
+            _sink = io.StringIO()
+            with redirect_stdout(_sink):
+                actual = ${functionName}(*(args if isinstance(args, list) else [args]))
+            try:
+                expected = json.loads(tc["expectedOutput"])
+            except Exception:
+                expected = tc["expectedOutput"]
             serialized = json.dumps(actual, sort_keys=True, separators=(",", ":"))
             print(f"{OUTPUT}{serialized}")
+            print(PASS if _eq(actual, expected) else FAIL)
         except Exception as e:
             print(f"{ERROR}{str(e)}")
 `;
@@ -448,40 +554,12 @@ const judgeBuilders: Record<
 };
 
 /**
- * Remove user debug logging so it does not pollute judge stdout parsing.
- * Keep harness marker logs intact (they are emitted outside user code).
- */
-function stripUserLogging(language: Language, userCode: string): string {
-  const lines = userCode.split("\n");
-
-  const filtered = lines.filter((line) => {
-    const text = line.trim();
-
-    if (language === "js") {
-      return !/\bconsole\.(log|info|debug|warn|error)\s*\(/.test(text);
-    }
-
-    if (language === "python") {
-      return !/^print\s*\(/.test(text);
-    }
-
-    if (language === "cpp") {
-      return !/\b(?:std::)?(?:cout|cerr|clog)\s*<</.test(text);
-    }
-
-    if (language === "java") {
-      return !/\bSystem\.out\.(?:print|println|printf)\s*\(/.test(text);
-    }
-
-    return true;
-  });
-
-  return filtered.join("\n");
-}
-
-/**
- * Generate full judge program for each language: injects user code, embeds test cases,
- * runs tests, and emits per-testcase markers only. Verdicts are computed by the worker.
+ * Generate full judge program for each language: injects user code verbatim,
+ * embeds test cases, runs tests, compares each result to the expected output, and
+ * emits per-testcase PASS/FAIL/ERROR markers. The worker only tallies the markers.
+ *
+ * User code is NOT rewritten — debug prints are neutralised at runtime by
+ * redirecting user stdout to a sink around each call (issues.md §7.1).
  */
 export function generateJudgeBoilerplate(
   signature: BoilerplateSignature,
@@ -491,8 +569,7 @@ export function generateJudgeBoilerplate(
   const result: Record<string, string> = {};
   for (const lang of LANGUAGES) {
     const harness = judgeBuilders[lang](signature, testCases);
-    const sanitizedUserCode = stripUserLogging(lang, userCode).trim();
-    result[lang] = harness.replace(USER_CODE_PLACEHOLDER, sanitizedUserCode);
+    result[lang] = harness.replace(USER_CODE_PLACEHOLDER, userCode.trim());
   }
   return result as Record<Language, string>;
 }

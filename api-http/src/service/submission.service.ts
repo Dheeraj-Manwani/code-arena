@@ -215,14 +215,9 @@ export const submitDsa = async (
     throw new ContestNotActiveError();
   }
 
-  const existingSubmission = await submissionRepo.getDsaSubmissionByAttempt(
-    attemptId,
-    dsaId
-  );
-
-  if (existingSubmission) {
-    throw new AlreadySubmittedError();
-  }
+  // DSA problems allow re-submission (issues.md §4.2): a contestant can retry and
+  // keep their best score. Scoring uses MAX(pointsEarned) per (attempt, problem),
+  // so we intentionally do NOT block an existing submission here.
 
   const testCases: SerializedTestCase[] = problem.testCases.map((tc) => ({
     input: tc.input,

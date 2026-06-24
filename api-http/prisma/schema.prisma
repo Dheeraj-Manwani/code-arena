@@ -249,7 +249,9 @@ model DsaSubmission {
   contest Contest        @relation(fields: [contestId], references: [id])
   attempt ContestAttempt @relation(fields: [attemptId], references: [id])
 
-  @@unique([attemptId, problemId])
+  // DSA problems allow re-submission (issues.md §4.2); scoring takes the best
+  // (MAX pointsEarned) per (attempt, problem), so multiple rows are expected.
+  @@index([attemptId, problemId])
   @@index([problemId])
   @@index([contestId])
   @@index([attemptId])
