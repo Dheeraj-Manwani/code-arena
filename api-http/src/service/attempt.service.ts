@@ -23,6 +23,10 @@ export const getUserAttempts = async (
 ): Promise<AttemptListResponse> => {
   const skip = (page - 1) * limit;
 
+  // Close any stale in_progress attempts before listing so statuses/durations are
+  // accurate (issues.md §2.1/§4.6).
+  await attemptRepo.timeoutExpiredAttemptsForUser(userId);
+
   const [attempts, total] = await Promise.all([
     attemptRepo.getAttemptsForUserPaginated(userId, skip, limit),
     attemptRepo.countAttemptsForUser(userId),
@@ -90,6 +94,9 @@ export const getAttemptResults = async (
     throw new AttemptNotFoundError();
   }
 
+  // Lazily close the attempt if its deadline has passed (issues.md §2.1/§4.6).
+  const status = await attemptRepo.applyAttemptTimeout(attempt);
+
   const [mcqSubs, dsaSubs] = await Promise.all([
     submissionRepo.getMcqSubmissionsByAttemptId(attemptId),
     submissionRepo.getDsaSubmissionsByAttemptId(attemptId),
@@ -156,7 +163,7 @@ export const getAttemptResults = async (
     contestId: attempt.contestId,
     contestTitle: attempt.contest.title,
     contestType: attempt.contest.type,
-    status: attempt.status,
+    status,
     startedAt: attempt.startedAt.toISOString(),
     submittedAt: attempt.submittedAt ? attempt.submittedAt.toISOString() : null,
     durationMs: attempt.durationMs ?? null,

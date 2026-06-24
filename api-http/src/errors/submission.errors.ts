@@ -19,4 +19,14 @@ export class AlreadySubmittedError extends AppError {
   }
 }
 
+export class AttemptDeadlinePassedError extends AppError {
+  constructor() {
+    super(
+      "The deadline for this attempt has passed. Your attempt has been closed.",
+      400,
+      "ATTEMPT_DEADLINE_PASSED"
+    );
+  }
+}
+
 export { ContestNotActiveError, ForbiddenError };

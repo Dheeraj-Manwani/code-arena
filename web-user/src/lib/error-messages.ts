@@ -27,6 +27,8 @@ const errorMessages = {
   [ApiErrorCode.QUESTION_NOT_FOUND]: "Question not found.",
   [ApiErrorCode.ALREADY_SUBMITTED]:
     "You have already submitted this question/problem.",
+  [ApiErrorCode.ATTEMPT_DEADLINE_PASSED]:
+    "The deadline for this attempt has passed. Your attempt has been closed.",
   [ApiErrorCode.INVALID_REQUEST]:
     "Invalid request. Please check your input and try again.",
   [ApiErrorCode.INTERNAL_SERVER_ERROR]:

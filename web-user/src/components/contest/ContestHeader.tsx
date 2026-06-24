@@ -1,5 +1,5 @@
 import { Clock, Trophy } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -9,6 +9,7 @@ interface ContestHeaderProps {
   totalQuestions: number;
   duration: number; // in minutes
   startTime: number;
+  onTimeUp?: () => void;
   isLeaderboardOpen?: boolean;
   onLeaderboardToggle?: () => void;
   showRankUpdatedTooltip?: boolean;
@@ -21,6 +22,7 @@ const ContestHeader = ({
   totalQuestions,
   duration,
   startTime,
+  onTimeUp,
   isLeaderboardOpen,
   onLeaderboardToggle,
   showRankUpdatedTooltip = false,
@@ -28,6 +30,12 @@ const ContestHeader = ({
 }: ContestHeaderProps) => {
   const [timeRemaining, setTimeRemaining] = useState(duration * 60);
   const [tooltipOpen, setTooltipOpen] = useState(false);
+  // Keep the latest onTimeUp without re-arming the interval, and fire it only once.
+  const onTimeUpRef = useRef(onTimeUp);
+  const firedTimeUpRef = useRef(false);
+  useEffect(() => {
+    onTimeUpRef.current = onTimeUp;
+  }, [onTimeUp]);
 
   useEffect(() => {
     if (showRankUpdatedTooltip) {
@@ -45,6 +53,13 @@ const ContestHeader = ({
       const elapsed = Math.floor((Date.now() - startTime) / 1000);
       const remaining = Math.max(0, duration * 60 - elapsed);
       setTimeRemaining(remaining);
+
+      // Deadline reached → fire the auto-submit handler exactly once (issues.md §1.5).
+      if (remaining <= 0 && !firedTimeUpRef.current) {
+        firedTimeUpRef.current = true;
+        clearInterval(interval);
+        onTimeUpRef.current?.();
+      }
     }, 1000);
 
     return () => clearInterval(interval);

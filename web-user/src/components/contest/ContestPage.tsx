@@ -48,6 +48,7 @@ const ContestPageInner = ({ contestId, attemptId }: ContestPageInnerProps) => {
   const allowNavigationRef = useRef(false);
   const previousQuestionRef = useRef<number | null>(null);
   const initialLoadDoneRef = useRef(false);
+  const autoSubmittedRef = useRef(false);
 
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
@@ -528,6 +529,24 @@ const ContestPageInner = ({ contestId, attemptId }: ContestPageInnerProps) => {
     }
   };
 
+  // Deadline reached: auto-submit and move to results (issues.md §1.5). The backend
+  // already enforces the deadline, so a rejected submit just means the attempt was
+  // auto-closed server-side — we still navigate to results either way.
+  const handleTimeUp = useCallback(async () => {
+    if (autoSubmittedRef.current) return;
+    autoSubmittedRef.current = true;
+    allowNavigationRef.current = true;
+    try {
+      await submitContestMutation.mutateAsync({ contestId, attemptId });
+    } catch {
+      // Deadline enforced server-side — attempt is already closed.
+    } finally {
+      toast("Time's up — your contest has been submitted.");
+      resetStore();
+      navigate(`/results/${attemptId}`);
+    }
+  }, [contestId, attemptId, submitContestMutation, resetStore, navigate]);
+
   if (isLoading || !contestData || !contestInfo) {
     return <Loader message="Loading contest" />;
   }
@@ -565,6 +584,7 @@ const ContestPageInner = ({ contestId, attemptId }: ContestPageInnerProps) => {
         totalQuestions={contestInfo.totalQuestions}
         duration={contestInfo.duration}
         startTime={contestInfo.startTime}
+        onTimeUp={handleTimeUp}
         isLeaderboardOpen={isLeaderboardOpen}
         onLeaderboardToggle={() => setIsLeaderboardOpen((prev) => !prev)}
         showRankUpdatedTooltip={showRankUpdatedTooltip}

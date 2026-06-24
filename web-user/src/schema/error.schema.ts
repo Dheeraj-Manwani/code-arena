@@ -22,6 +22,7 @@ export enum ApiErrorCode {
 
   // Submission errors
   ALREADY_SUBMITTED = "ALREADY_SUBMITTED",
+  ATTEMPT_DEADLINE_PASSED = "ATTEMPT_DEADLINE_PASSED",
 
   // General errors
   FORBIDDEN = "FORBIDDEN",
