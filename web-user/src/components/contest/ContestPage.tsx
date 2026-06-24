@@ -38,15 +38,12 @@ import { contestWebSocket } from "@/lib/websocket";
 const LEAVE_MESSAGE =
   "Are you sure you want to leave? Your progress may be lost.";
 
-const ContestPage = () => {
-  const { contestId: conId, attemptId: attId } = useParams();
-  const contestId = conId ? Number(conId) : undefined;
-  const attemptId = attId ? Number(attId) : undefined;
+interface ContestPageInnerProps {
+  contestId: number;
+  attemptId: number;
+}
 
-  if (!contestId || !attemptId) {
-    return <Navigate to="/contests" replace />;
-  }
-
+const ContestPageInner = ({ contestId, attemptId }: ContestPageInnerProps) => {
   const navigate = useNavigate();
   const allowNavigationRef = useRef(false);
   const previousQuestionRef = useRef<number | null>(null);
@@ -666,14 +663,14 @@ const ContestPage = () => {
         )}
       </div>
 
-      {/* <ContestNavigationFooter
+      <ContestNavigationFooter
         contestQuestions={contestQuestions}
         currentQuestionIndex={currentQuestionIndex}
         goToQuestion={goToQuestion}
         isAttempted={isAttempted}
         dsaStatuses={dsaStatusByQuestionId}
         onShowSubmitConfirm={() => setShowSubmitConfirm(true)}
-      /> */}
+      />
 
       <ContestSubmitDialog
         isOpen={showSubmitConfirm}
@@ -684,6 +681,20 @@ const ContestPage = () => {
       />
     </div>
   );
+};
+
+// Validating wrapper: keep the param guard *above* the hook-using inner component so
+// hooks are never called conditionally (Rules of Hooks — issues.md §6.5).
+const ContestPage = () => {
+  const { contestId: conId, attemptId: attId } = useParams();
+  const contestId = conId ? Number(conId) : undefined;
+  const attemptId = attId ? Number(attId) : undefined;
+
+  if (!contestId || Number.isNaN(contestId) || !attemptId || Number.isNaN(attemptId)) {
+    return <Navigate to="/contests" replace />;
+  }
+
+  return <ContestPageInner contestId={contestId} attemptId={attemptId} />;
 };
 
 export default ContestPage;

@@ -88,6 +88,18 @@ export const markAttemptSubmitted = async (
     userId: number,
     contestId: number,
 ) => {
+    // Read startedAt so we can populate durationMs (issues.md §4.6). The status guard
+    // below still makes the write idempotent for concurrent submit requests.
+    const attempt = await prisma.contestAttempt.findUnique({
+        where: { id: attemptId },
+        select: { startedAt: true },
+    });
+
+    const submittedAt = new Date();
+    const durationMs = attempt
+        ? submittedAt.getTime() - attempt.startedAt.getTime()
+        : null;
+
     const result = await prisma.contestAttempt.updateMany({
         where: {
             id: attemptId,
@@ -95,7 +107,80 @@ export const markAttemptSubmitted = async (
             contestId,
             status: "in_progress",
         },
-        data: { status: "submitted" },
+        data: { status: "submitted", submittedAt, durationMs },
     });
     return result.count > 0;
+};
+
+const attemptListContestSelect = {
+    id: true,
+    title: true,
+    type: true,
+    questions: {
+        include: {
+            mcq: { select: { points: true } },
+            dsa: { select: { points: true } },
+        },
+    },
+} as const;
+
+export const getAttemptsForUserPaginated = async (
+    userId: number,
+    skip: number,
+    take: number,
+) => {
+    return await prisma.contestAttempt.findMany({
+        where: { userId },
+        orderBy: { startedAt: "desc" },
+        skip,
+        take,
+        include: {
+            contest: { select: attemptListContestSelect },
+        },
+    });
+};
+
+export const countAttemptsForUser = async (userId: number) => {
+    return await prisma.contestAttempt.count({ where: { userId } });
+};
+
+export const getLeaderboardRanksForUserContests = async (
+    userId: number,
+    contestIds: number[],
+) => {
+    if (contestIds.length === 0) return [];
+    return await prisma.contestLeaderboard.findMany({
+        where: { userId, contestId: { in: contestIds } },
+        select: { contestId: true, rank: true },
+    });
+};
+
+export const getAttemptWithContestQuestions = async (attemptId: number) => {
+    return await prisma.contestAttempt.findUnique({
+        where: { id: attemptId },
+        include: {
+            contest: {
+                select: {
+                    id: true,
+                    title: true,
+                    type: true,
+                    questions: {
+                        orderBy: { order: "asc" },
+                        select: {
+                            id: true,
+                            order: true,
+                            mcqId: true,
+                            dsaId: true,
+                            mcq: {
+                                select: { id: true, questionText: true, points: true },
+                            },
+                            dsa: {
+                                select: { id: true, title: true, points: true },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    });
 };

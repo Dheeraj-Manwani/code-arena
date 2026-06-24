@@ -1,5 +1,4 @@
 import { useAuthStore } from "@/stores/auth.store";
-import { toast } from "react-hot-toast";
 
 export interface SubmissionResultEvent {
   type: "SUBMISSION_RESULT";
@@ -17,28 +16,6 @@ export interface SubmissionResultEvent {
 }
 
 type SubmissionResultListener = (event: SubmissionResultEvent["data"]) => void;
-
-function getWsToastMessage(payload: Record<string, unknown>): string {
-  if (payload.type === "ERROR" && typeof payload.message === "string") {
-    return `WS Error: ${payload.message}`;
-  }
-
-  if (payload.type === "CONNECTED" && typeof payload.contestId === "number") {
-    return `WS Connected to contest ${payload.contestId}`;
-  }
-
-  if (
-    payload.type === "SUBMISSION_RESULT" &&
-    payload.data &&
-    typeof payload.data === "object"
-  ) {
-    const data = payload.data as Record<string, unknown>;
-    const status = typeof data.status === "string" ? data.status : "updated";
-    return `WS Submission Result: ${status}`;
-  }
-
-  return `WS Message: ${JSON.stringify(payload)}`;
-}
 
 class ContestWebSocketClient {
   private socket: WebSocket | null = null;
@@ -102,11 +79,9 @@ class ContestWebSocketClient {
       try {
         const parsed: unknown = JSON.parse(event.data);
         if (!parsed || typeof parsed !== "object") {
-          toast("WS Message received");
           return;
         }
         const payload = parsed as Record<string, unknown>;
-        toast(getWsToastMessage(payload));
         if (payload.type !== "SUBMISSION_RESULT" || !payload.data || typeof payload.data !== "object") {
           return;
         }

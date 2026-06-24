@@ -6,19 +6,23 @@ import { Badge } from '@/components/ui/badge';
 import StatusBadge from '@/components/common/StatusBadge';
 import EmptyState from '@/components/common/EmptyState';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { ContestAttempt } from '@/schema/submission.schema';
+import { useAttemptsQuery } from '@/queries/attempt.queries';
 import {
   Trophy, Clock, Calendar, Play, Eye,
   LayoutList
 } from 'lucide-react';
 
+const PAGE_SIZE = 10;
+
 const MyContests = () => {
   const navigate = useNavigate();
-  const [isLoading] = useState(false);
-  const [attempts] = useState<ContestAttempt[]>([]);
-  // TODO: replace with useAttemptsQuery or profile.recentAttempts when API is available
+  const [page, setPage] = useState(1);
+  const { data, isLoading } = useAttemptsQuery(page, PAGE_SIZE);
+  const attempts = data?.attempts ?? [];
+  const pagination = data?.pagination;
 
-  const formatDuration = (ms: number) => {
+  const formatDuration = (ms: number | null) => {
+    if (ms == null) return '—';
     const hours = Math.floor(ms / (1000 * 60 * 60));
     const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
     if (hours > 0) {
@@ -130,7 +134,10 @@ const MyContests = () => {
         ) : (
           <div className="space-y-4">
             {attempts.map(attempt => {
-              const scorePercentage = (attempt.totalPoints / attempt.maxPoints) * 100;
+              const scorePercentage =
+                attempt.maxPoints > 0
+                  ? (attempt.totalPoints / attempt.maxPoints) * 100
+                  : 0;
 
               return (
                 <Card key={attempt.id} className="hover:border-primary/30 transition-colors">
@@ -190,7 +197,11 @@ const MyContests = () => {
                         {/* Action Button */}
                         {attempt.status === 'in_progress' ? (
                           <Button
-                            onClick={() => navigate(`/contest/${attempt.contestId}`)}
+                            onClick={() =>
+                              navigate(
+                                `/contest/${attempt.contestId}/attempt/${attempt.id}`,
+                              )
+                            }
                             className="gap-2"
                           >
                             <Play className="w-4 h-4" />
@@ -212,6 +223,29 @@ const MyContests = () => {
                 </Card>
               );
             })}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {!isLoading && pagination && pagination.totalPages > 1 && (
+          <div className="flex items-center justify-center gap-4 mt-8">
+            <Button
+              variant="outline"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Previous
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              Page {pagination.page} of {pagination.totalPages}
+            </span>
+            <Button
+              variant="outline"
+              disabled={page >= pagination.totalPages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next
+            </Button>
           </div>
         )}
       </main>

@@ -12,6 +12,7 @@ import problemRoutes from "./routes/problem.routes";
 import leaderboardRoutes from "./routes/leaderboard.routes";
 import statsRoutes from "./routes/stats.routes";
 import profileRoutes from "./routes/profile.routes";
+import attemptRoutes from "./routes/attempt.routes";
 import runRoutes from "./routes/run.routes";
 import internalRoutes from "./routes/internal.routes";
 import { errorHandler } from "./middleware/error-handler";
@@ -46,6 +47,7 @@ app.use("/api/problems", problemRoutes);
 app.use("/api/contests", leaderboardRoutes);
 app.use("/api/stats", statsRoutes);
 app.use("/api/profile", profileRoutes);
+app.use("/api/attempts", attemptRoutes);
 app.use("/api/run", runRoutes);
 app.use("/api/internal", internalRoutes);
 

@@ -112,6 +112,47 @@ export const getDsaSubmissionsByContest = async (contestId: number) => {
   });
 };
 
+export const getMcqSubmissionsByAttemptIds = async (attemptIds: number[]) => {
+  if (attemptIds.length === 0) return [];
+  return await prisma.mcqSubmission.findMany({
+    where: { attemptId: { in: attemptIds } },
+    select: { attemptId: true, pointsEarned: true },
+  });
+};
+
+export const getDsaSubmissionsByAttemptIds = async (attemptIds: number[]) => {
+  if (attemptIds.length === 0) return [];
+  return await prisma.dsaSubmission.findMany({
+    where: { attemptId: { in: attemptIds } },
+    select: { attemptId: true, pointsEarned: true },
+  });
+};
+
+export const getMcqSubmissionsByAttemptId = async (attemptId: number) => {
+  return await prisma.mcqSubmission.findMany({
+    where: { attemptId },
+    select: {
+      questionId: true,
+      selectedOptionIndex: true,
+      isCorrect: true,
+      pointsEarned: true,
+    },
+  });
+};
+
+export const getDsaSubmissionsByAttemptId = async (attemptId: number) => {
+  return await prisma.dsaSubmission.findMany({
+    where: { attemptId },
+    select: {
+      problemId: true,
+      status: true,
+      pointsEarned: true,
+      testCasesPassed: true,
+      totalTestCases: true,
+    },
+  });
+};
+
 export const getDraftAnswersByAttemptId = async (attemptId: number) => {
   return await prisma.draftAnswer.findMany({
     where: { attemptId },

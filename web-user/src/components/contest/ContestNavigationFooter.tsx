@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Send } from "lucide-react";
+import { ArrowLeft, ArrowRight, Send } from "lucide-react";
 import type { ContestQuestion } from "@/schema/problem.schema";
 
 interface ContestNavigationFooterProps {
@@ -21,10 +21,13 @@ export default function ContestNavigationFooter({
   dsaStatuses = {},
   onShowSubmitConfirm,
 }: ContestNavigationFooterProps) {
+  const isFirstQuestion = currentQuestionIndex === 0;
+  const isLastQuestion = currentQuestionIndex === contestQuestions.length - 1;
+
   return (
     <footer className="bg-card border-t border-border px-6 py-4">
-      <div className="flex items-center justify-between">
-        {/* Journey - question navigation (commented out - forward-only flow) */}
+      <div className="flex items-center justify-between gap-4">
+        {/* Journey - jump directly to any question */}
         <div className="flex items-center gap-2 flex-wrap">
           {contestQuestions.map((q, index) => {
             const attempted = isAttempted(q);
@@ -70,32 +73,26 @@ export default function ContestNavigationFooter({
         </div>
 
         <div className="flex items-center gap-3 ml-auto">
-          {/* Previous / Next buttons (commented out - forward-only via per-question Submit) */}
-          {/* <Button
+          <Button
             variant="outline"
             size="lg"
             onClick={() => goToQuestion(currentQuestionIndex - 1)}
-            disabled={currentQuestionIndex === 0}
+            disabled={isFirstQuestion}
             className="gap-2"
           >
             <ArrowLeft className="h-5 w-5" />
             Previous
           </Button>
-          {isLastQuestion ? (
-            <Button
-              onClick={onShowSubmitConfirm}
-              size="lg"
-              className="arena-glow gap-2"
-            >
-              <Send className="h-5 w-5" />
-              Submit Contest
-            </Button>
-          ) : (
-            <Button onClick={onNext} size="lg" className="arena-glow gap-2">
-              Next Question
-              <ArrowRight className="h-5 w-5" />
-            </Button>
-          )} */}
+          <Button
+            variant="outline"
+            size="lg"
+            onClick={() => goToQuestion(currentQuestionIndex + 1)}
+            disabled={isLastQuestion}
+            className="gap-2"
+          >
+            Next
+            <ArrowRight className="h-5 w-5" />
+          </Button>
           <Button
             onClick={onShowSubmitConfirm}
             size="lg"
