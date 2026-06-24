@@ -3,12 +3,19 @@ import { BoilerplateSignatureSchema, type ContestQuestion } from "./problem.sche
 import { ContestWithQuestions } from "./contest.schema";
 import { LanguageEnum, type Language } from "./language.schema";
 
+/** Hard caps to bound submission payload size (issues.md §3.4). */
+export const MAX_CODE_LENGTH = 50_000; // ~50 KB of source per submission
+export const MAX_TEST_CASES = 100;
+
 export const SubmitMcqSchema = z.object({
   selectedOptionIndex: z.number().int().min(0),
 });
 
 export const SubmitDsaSchema = z.object({
-  code: z.string().min(1),
+  code: z
+    .string()
+    .min(1)
+    .max(MAX_CODE_LENGTH, { message: `Code must not exceed ${MAX_CODE_LENGTH} characters` }),
   language: LanguageEnum,
 });
 
@@ -22,6 +29,7 @@ export const RunCodeSchema = SubmitDsaSchema.extend({
         expectedOutput: z.string(),
       })
     )
+    .max(MAX_TEST_CASES, { message: `A maximum of ${MAX_TEST_CASES} test cases is allowed` })
     .optional(),
 });
 

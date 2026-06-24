@@ -73,7 +73,7 @@ export const updateContest = async (req: Request, res: Response) => {
     throw new ContestNotFoundError();
   }
   const data = UpdateContestSchema.parse(req.body);
-  const contest = await contestService.updateContest(contestId, data);
+  const contest = await contestService.updateContest(contestId, data, req.userId);
   return sendSuccess(res, contest, 200);
 };
 
@@ -91,6 +91,7 @@ export const linkMcqToContest = async (req: Request, res: Response) => {
     contestId,
     questionId,
     order,
+    req.userId,
   );
   return sendSuccess(res, link, 200);
 };
@@ -109,6 +110,7 @@ export const linkDsaToContest = async (req: Request, res: Response) => {
     contestId,
     problemId,
     order,
+    req.userId,
   );
   return sendSuccess(res, link, 200);
 };
@@ -119,7 +121,7 @@ export const unlinkMcqFromContest = async (req: Request, res: Response) => {
   if (isNaN(contestId) || isNaN(questionId)) {
     throw new ContestNotFoundError();
   }
-  await contestService.unlinkMcqFromContest(contestId, questionId);
+  await contestService.unlinkMcqFromContest(contestId, questionId, req.userId);
   return sendSuccess(res, { success: true }, 200);
 };
 
@@ -129,7 +131,7 @@ export const unlinkDsaFromContest = async (req: Request, res: Response) => {
   if (isNaN(contestId) || isNaN(problemId)) {
     throw new ContestNotFoundError();
   }
-  await contestService.unlinkDsaFromContest(contestId, problemId);
+  await contestService.unlinkDsaFromContest(contestId, problemId, req.userId);
   return sendSuccess(res, { success: true }, 200);
 };
 
@@ -142,6 +144,6 @@ export const reorderContestQuestions = async (req: Request, res: Response) => {
   if (!Array.isArray(questionOrders)) {
     return res.status(400).json({ error: "questionOrders must be an array" });
   }
-  await contestService.reorderContestQuestions(contestId, questionOrders);
+  await contestService.reorderContestQuestions(contestId, questionOrders, req.userId);
   return sendSuccess(res, { success: true }, 200);
 };

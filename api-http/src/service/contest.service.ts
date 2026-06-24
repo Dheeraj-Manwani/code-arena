@@ -11,6 +11,21 @@ import { AddDsaType, AddMcqType } from "../schema/problem.schema";
 import { getContestPhase, mapDBContestToContest } from "../util/mappers";
 import { toStoredSignature } from "../util/boilerplate";
 
+/**
+ * Enforce that the caller owns the contest before any mutation (issues.md §3.3).
+ * Applied to every link/unlink/update/reorder/add path for parity.
+ */
+const assertContestOwnership = async (contestId: number, creatorId: number) => {
+  const contest = await contestRepo.getContestById(contestId);
+  if (!contest) {
+    throw new ContestNotFoundError();
+  }
+  if (contest.creatorId !== creatorId) {
+    throw new ForbiddenError();
+  }
+  return contest;
+};
+
 export const getAllContests = async (
   page: number,
   limit: number,
@@ -136,11 +151,7 @@ export const addMcqToContest = async (
   input: AddMcqType,
   creatorId: number,
 ) => {
-  const contestExists = await contestRepo.checkIfContestExists(contestId);
-
-  if (!contestExists) {
-    throw new ContestNotFoundError();
-  }
+  await assertContestOwnership(contestId, creatorId);
 
   const maxOrder = await problemRepo.getMaxQuestionOrder(contestId);
   const nextOrder = (maxOrder?.order ?? -1) + 1;
@@ -160,11 +171,7 @@ export const addDsaToContest = async (
   input: AddDsaType,
   creatorId: number,
 ) => {
-  const contestExists = await contestRepo.checkIfContestExists(contestId);
-
-  if (!contestExists) {
-    throw new ContestNotFoundError();
-  }
+  await assertContestOwnership(contestId, creatorId);
 
   if (input.boilerplateSignature == null) {
     throw new Error("boilerplateSignature is required for DSA problems");
@@ -193,12 +200,9 @@ export const addDsaToContest = async (
 export const updateContest = async (
   contestId: number,
   input: UpdateContestInput,
+  creatorId: number,
 ) => {
-  const contestExists = await contestRepo.checkIfContestExists(contestId);
-
-  if (!contestExists) {
-    throw new ContestNotFoundError();
-  }
+  await assertContestOwnership(contestId, creatorId);
 
   const { questions, ...contestData } = input;
 
@@ -267,12 +271,9 @@ export const linkMcqToContest = async (
   contestId: number,
   questionId: number,
   order: number,
+  creatorId: number,
 ) => {
-  const contestExists = await contestRepo.checkIfContestExists(contestId);
-
-  if (!contestExists) {
-    throw new ContestNotFoundError();
-  }
+  await assertContestOwnership(contestId, creatorId);
 
   // Verify question exists
   const question = await problemRepo.getMcqQuestionById(questionId);
@@ -287,12 +288,9 @@ export const linkDsaToContest = async (
   contestId: number,
   problemId: number,
   order: number,
+  creatorId: number,
 ) => {
-  const contestExists = await contestRepo.checkIfContestExists(contestId);
-
-  if (!contestExists) {
-    throw new ContestNotFoundError();
-  }
+  await assertContestOwnership(contestId, creatorId);
 
   // Verify problem exists
   const problem = await problemRepo.getDsaProblemById(problemId);
@@ -306,11 +304,9 @@ export const linkDsaToContest = async (
 export const unlinkMcqFromContest = async (
   contestId: number,
   questionId: number,
+  creatorId: number,
 ) => {
-  const contestExists = await contestRepo.checkIfContestExists(contestId);
-  if (!contestExists) {
-    throw new ContestNotFoundError();
-  }
+  await assertContestOwnership(contestId, creatorId);
 
   return await problemRepo.unlinkMcqFromContest(contestId, questionId);
 };
@@ -318,11 +314,9 @@ export const unlinkMcqFromContest = async (
 export const unlinkDsaFromContest = async (
   contestId: number,
   problemId: number,
+  creatorId: number,
 ) => {
-  const contestExists = await contestRepo.checkIfContestExists(contestId);
-  if (!contestExists) {
-    throw new ContestNotFoundError();
-  }
+  await assertContestOwnership(contestId, creatorId);
 
   return await problemRepo.unlinkDsaFromContest(contestId, problemId);
 };
@@ -330,11 +324,9 @@ export const unlinkDsaFromContest = async (
 export const reorderContestQuestions = async (
   contestId: number,
   questionOrders: Array<{ id: number; isMcq: boolean; order: number }>,
+  creatorId: number,
 ) => {
-  const contestExists = await contestRepo.checkIfContestExists(contestId);
-  if (!contestExists) {
-    throw new ContestNotFoundError();
-  }
+  await assertContestOwnership(contestId, creatorId);
 
   return await problemRepo.reorderContestQuestions(contestId, questionOrders);
 };

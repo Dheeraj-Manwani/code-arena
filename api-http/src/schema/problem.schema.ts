@@ -3,6 +3,9 @@ import { z } from "zod";
 export const DifficultyEnum = z.enum(["easy", "medium", "hard"]);
 export type Difficulty = z.infer<typeof DifficultyEnum>;
 
+/** Max test cases a single DSA problem may carry — bounds harness/source size (issues.md §3.4). */
+export const MAX_TEST_CASES_PER_PROBLEM = 100;
+
 export const McqQuestionSchema = z.object({
   id: z.number(),
   questionText: z.string(),
@@ -181,6 +184,9 @@ export const UpdateDsaSchema = z
         }),
       )
       .min(1, { message: "At least one test case is required" })
+      .max(MAX_TEST_CASES_PER_PROBLEM, {
+        message: `A maximum of ${MAX_TEST_CASES_PER_PROBLEM} test cases is allowed`,
+      })
       .optional(),
     boilerplate: z.record(z.string(), z.string()).optional(),
     /** When provided, backend generates boilerplate from this; boilerplate in body is ignored */
@@ -254,7 +260,10 @@ export const AddTestCaseSchema = z
       isHidden: z.boolean().default(false),
     }),
   )
-  .min(1, { message: "At least one test case is required" });
+  .min(1, { message: "At least one test case is required" })
+  .max(MAX_TEST_CASES_PER_PROBLEM, {
+    message: `A maximum of ${MAX_TEST_CASES_PER_PROBLEM} test cases is allowed`,
+  });
 
 export const AddDsaSchema = z.object({
   title: z

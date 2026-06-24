@@ -1,9 +1,12 @@
 import { Response, NextFunction, Request } from "express";
 import jwt, { JwtPayload } from "jsonwebtoken";
+import { Role } from "@prisma/client";
 import { sendError } from "../util/response";
-import prisma from "../lib/db";
 
 const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET || "";
+
+const isValidRole = (value: unknown): value is Role =>
+  value === Role.creator || value === Role.contestee;
 
 export async function authenticateToken(
   req: Request,
@@ -26,17 +29,15 @@ export async function authenticateToken(
     const userId =
       typeof decoded.sub === "string" ? parseInt(decoded.sub, 10) : decoded.sub;
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, role: true },
-    });
-
-    if (!user) {
+    // Trust the signed JWT claims instead of hitting the DB on every request
+    // (issues.md §3.1). id + role are both signed at login; there is no
+    // revocation list, so a lookup buys cost without benefit.
+    if (!userId || Number.isNaN(userId) || !isValidRole(decoded.role)) {
       return sendError(res, "UNAUTHORIZED", 401);
     }
 
-    req.userId = user.id;
-    req.userRole = user.role;
+    req.userId = userId;
+    req.userRole = decoded.role;
     next();
   } catch (error) {
     return sendError(res, "UNAUTHORIZED", 401);

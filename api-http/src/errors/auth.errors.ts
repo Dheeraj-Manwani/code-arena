@@ -24,6 +24,16 @@ export class InvalidOtpError extends AppError {
   }
 }
 
+export class OtpLockedError extends AppError {
+  constructor() {
+    super(
+      "Too many incorrect attempts. Please request a new code.",
+      429,
+      "OTP_LOCKED"
+    );
+  }
+}
+
 export class InvalidTokenError extends AppError {
   constructor() {
     super("Invalid token", 401, "INVALID_TOKEN");

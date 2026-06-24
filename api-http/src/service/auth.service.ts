@@ -9,6 +9,7 @@ import {
   InvalidCredentialsError,
   InvalidOtpError,
   InvalidTokenError,
+  OtpLockedError,
   RefreshTokenNotFoundError,
   TooManyOtpRequestsError,
   UserNotFoundError,
@@ -73,9 +74,12 @@ export const verifyEmailOtp = async (input: VerifyOtpInput) => {
     throw new UserNotFoundError();
   }
 
-  const isValidOtp = await otpRepo.verifyOtp(input.email, otpHash);
+  const otpResult = await otpRepo.verifyOtp(input.email, otpHash);
 
-  if (!isValidOtp) {
+  if (otpResult === "locked") {
+    throw new OtpLockedError();
+  }
+  if (otpResult !== "ok") {
     throw new InvalidOtpError();
   }
 
@@ -119,6 +123,13 @@ export const signUp = async ({ email, name, password }: SignUpInput) => {
       password: passwordHash,
       role: 'contestee',
       isVerified: false,
+    });
+  } else {
+    // Unverified account re-use: update name/password so a user can correct a typo
+    // before verifying (issues.md §3.6).
+    await userRepo.updateUnverifiedUser(existingUser.id, {
+      name,
+      password: passwordHash,
     });
   }
 
@@ -197,9 +208,12 @@ export const resetPassword = async ({
 
   // Verify OTP
   const otpHash = hashOtp(otp);
-  const isValidOtp = await otpRepo.verifyOtp(email, otpHash);
+  const otpResult = await otpRepo.verifyOtp(email, otpHash);
 
-  if (!isValidOtp) {
+  if (otpResult === "locked") {
+    throw new OtpLockedError();
+  }
+  if (otpResult !== "ok") {
     throw new InvalidOtpError();
   }
 

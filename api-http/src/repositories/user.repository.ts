@@ -68,3 +68,14 @@ export const updateUserPassword = async (userId: number, passwordHash: string) =
     data: { password: passwordHash },
   });
 };
+
+/** Refresh an unverified account's name/password when the user re-signs up (issues.md §3.6). */
+export const updateUnverifiedUser = async (
+  userId: number,
+  data: { name: string; password: string },
+) => {
+  return prisma.user.update({
+    where: { id: userId },
+    data: { name: data.name, password: data.password },
+  });
+};

@@ -8,10 +8,14 @@ const errorMessages = {
   [ApiErrorCode.UNAUTHORIZED]: "You are not authorized to perform this action.",
   [ApiErrorCode.INVALID_OTP]:
     "Invalid or expired OTP. Please request a new one.",
+  [ApiErrorCode.OTP_LOCKED]:
+    "Too many incorrect attempts. Please request a new code.",
   [ApiErrorCode.INVALID_TOKEN]:
     "Your session has expired. Please log in again.",
   [ApiErrorCode.TOO_MANY_OTP_REQUESTS]:
     "Too many OTP requests. Please wait a moment before trying again.",
+  [ApiErrorCode.TOO_MANY_REQUESTS]:
+    "Too many requests. Please slow down and try again shortly.",
   [ApiErrorCode.USER_NOT_FOUND]: "User not found.",
   [ApiErrorCode.USER_NOT_VERIFIED]:
     "Your email is not verified. Please verify your email to continue.",

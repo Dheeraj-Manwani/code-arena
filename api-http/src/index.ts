@@ -34,7 +34,7 @@ app
       credentials: true,
     })
   )
-  .use(morgan("dev"))
+  .use(morgan(env.NODE_ENV === "production" ? "combined" : "dev"))
   .use(cookieParser())
   .use(bodyParser.json({ limit: "10kb" }))
   .use(bodyParser.urlencoded({ extended: true, limit: "20kb" }));

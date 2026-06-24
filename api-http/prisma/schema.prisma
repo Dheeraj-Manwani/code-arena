@@ -270,12 +270,13 @@ model ContestLeaderboard {
 }
 
 model EmailOtp {
-  id        String   @id @default(cuid())
-  email     String
-  otpHash   String
-  expiresAt DateTime
-  used      Boolean  @default(false)
-  createdAt DateTime @default(now())
+  id             String   @id @default(cuid())
+  email          String
+  otpHash        String
+  expiresAt      DateTime
+  used           Boolean  @default(false)
+  failedAttempts Int      @default(0)
+  createdAt      DateTime @default(now())
 
   @@index([email, used])
   @@index([expiresAt])

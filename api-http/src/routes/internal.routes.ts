@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response, Router } from "express";
+import crypto from "crypto";
 import { z } from "zod";
 import prisma from "../lib/db";
 import { redisPublisher } from "../lib/redisPublisher";
@@ -6,6 +7,20 @@ import { SubmissionStatusEnum } from "../schema/submission.schema";
 import { sendError, sendSuccess } from "../util/response";
 
 const router = Router();
+
+/**
+ * Constant-time string comparison for the shared internal secret (issues.md §3.2).
+ * Reject on length mismatch first — timingSafeEqual requires equal-length buffers,
+ * and the length itself is not secret here.
+ */
+function timingSafeEqualStrings(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(bufA, bufB);
+}
 
 function authenticateInternalRequest(
   req: Request,
@@ -20,7 +35,7 @@ function authenticateInternalRequest(
   }
 
   const expectedHeader = `Bearer ${expectedSecret}`;
-  if (authHeader !== expectedHeader) {
+  if (!timingSafeEqualStrings(authHeader, expectedHeader)) {
     return sendError(res, "UNAUTHORIZED", 401);
   }
 
