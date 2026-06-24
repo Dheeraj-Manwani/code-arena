@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./config/env"; // validates environment at startup (also loads dotenv) — must be first
 import { connection } from "./queue/connection";
 import { createWorkers } from "./worker";
 import { registerGracefulShutdown } from "./shutdown/graceful";

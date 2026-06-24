@@ -1,4 +1,4 @@
-import "dotenv/config";
+import { env } from "./env"; // validates environment at startup (also loads dotenv) — must be first
 import IORedis from "ioredis";
 import pino from "pino";
 import { WebSocketServer } from "ws";
@@ -7,14 +7,14 @@ import { publishSubmissionResult } from "./publisher";
 
 const logger = pino({
   transport:
-    process.env.NODE_ENV !== "production"
+    env.NODE_ENV !== "production"
       ? {
           target: "pino-pretty",
         }
       : undefined,
 });
 
-const wsPort = Number.parseInt(process.env.WS_PORT ?? "8080", 10);
+const wsPort = env.WS_PORT;
 const wss = new WebSocketServer({ port: wsPort });
 
 wss.on("connection", (ws) => {
@@ -22,9 +22,9 @@ wss.on("connection", (ws) => {
 });
 
 const subscriber = new IORedis({
-  host: process.env.REDIS_HOST ?? "localhost",
-  port: Number.parseInt(process.env.REDIS_PORT ?? "6379", 10),
-  password: process.env.REDIS_PASSWORD || undefined,
+  host: env.REDIS_HOST,
+  port: env.REDIS_PORT,
+  password: env.REDIS_PASSWORD,
   maxRetriesPerRequest: null,
   enableReadyCheck: false,
 });

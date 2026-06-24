@@ -4,7 +4,7 @@ export const RoleEnum = z.enum(["creator", "contestee"]);
 
 export const SessionUserSchema = z.object({
   id: z.number().int(),
-  email: z.email(),
+  email: z.string().email(),
   name: z.string(),
   role: RoleEnum,
   isVerified: z.boolean().default(false),

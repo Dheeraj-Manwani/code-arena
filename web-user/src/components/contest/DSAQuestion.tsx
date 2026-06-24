@@ -484,7 +484,7 @@ const DSAQuestion = ({
                     onRemoveCustomTestCase={handleRemoveCustomTestCase}
                     results={testResults}
                     isRunning={runCodeMutation.isPending}
-                    signature={question.signature as { parameters?: Array<{ name: string; type: string }> }}
+                    signature={question.signature as { parameters?: Array<{ name: string; type: string }>; returnType?: string }}
                     runOutput={runOutput}
                   />
                 </div>

@@ -1,5 +1,5 @@
+import { env } from "./config/env"; // validates environment at startup — must be imported first
 import express from "express";
-import dotenv from "dotenv";
 import cors from "cors";
 import bodyParser from "body-parser";
 import morgan from "morgan";
@@ -16,14 +16,12 @@ import runRoutes from "./routes/run.routes";
 import internalRoutes from "./routes/internal.routes";
 import { errorHandler } from "./middleware/error-handler";
 
-dotenv.config();
-
 const app = express();
 app.get("/health", (_, res) => res.send("ok"));
 
-const PORT = process.env.PORT || 3000;
-const allowedOrigins = process.env.ALLOWED_HOSTS
-  ? process.env.ALLOWED_HOSTS.split(",").map((origin) => origin.trim())
+const PORT = env.PORT;
+const allowedOrigins = env.ALLOWED_HOSTS
+  ? env.ALLOWED_HOSTS.split(",").map((origin) => origin.trim())
   : ["http://localhost:5173"];
 
 app.disable("x-powered-by");

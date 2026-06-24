@@ -23,8 +23,8 @@ export const CreateContestSchema = z
       .string()
       .min(1, { message: "Description is required" })
       .max(5000, { message: "Description must not exceed 5000 characters" }),
-    startTime: z.iso.datetime().optional(),
-    endTime: z.iso.datetime().optional(),
+    startTime: z.string().datetime().optional(),
+    endTime: z.string().datetime().optional(),
     type: ContestTypeEnum.optional().default("practice"),
     status: ContestStatusEnum.optional().default("draft"),
     maxDurationMs: z
@@ -131,8 +131,8 @@ export const UpdateContestSchema = z
       .min(1, { message: "Description is required" })
       .max(5000, { message: "Description must not exceed 5000 characters" })
       .optional(),
-    startTime: z.iso.datetime().optional().nullable(),
-    endTime: z.iso.datetime().optional().nullable(),
+    startTime: z.string().datetime().optional().nullable(),
+    endTime: z.string().datetime().optional().nullable(),
     type: ContestTypeEnum.optional(),
     status: ContestStatusEnum.optional(),
     maxDurationMs: z
@@ -285,14 +285,14 @@ export const ContestSchema = z.object({
   id: z.number(),
   title: z.string(),
   description: z.string(),
-  startTime: z.iso.datetime().nullable(),
-  endTime: z.iso.datetime().nullable(),
+  startTime: z.string().datetime().nullable(),
+  endTime: z.string().datetime().nullable(),
   maxDurationMs: z.number().nullable(),
   type: ContestTypeEnum,
   status: ContestStatusEnum,
   phase: ContestPhaseEnum.optional(),
-  createdAt: z.iso.datetime(),
-  updatedAt: z.iso.datetime(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
   creatorId: z.number(),
   mcqCount: z.number(),
   dsaCount: z.number(),
@@ -354,16 +354,16 @@ export const GetContestsSchema = z.object({
   page: z
     .string()
     .optional()
-    .transform((v) => parseInt(v ?? "1", 10))
-    .pipe(z.number().int().min(1))
-    .default(1),
+    .default("1")
+    .transform((v) => parseInt(v, 10))
+    .pipe(z.number().int().min(1)),
 
   limit: z
     .string()
     .optional()
-    .transform((v) => parseInt(v ?? "10", 10))
-    .pipe(z.number().int().min(1))
-    .default(10),
+    .default("10")
+    .transform((v) => parseInt(v, 10))
+    .pipe(z.number().int().min(1)),
 
   search: z
     .string()

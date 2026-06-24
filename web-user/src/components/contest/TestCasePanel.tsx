@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Plus, Trash2, Check, X, Loader2, Terminal } from "lucide-react";
 import type { TestCaseResult, TestCaseUI } from "@/schema/problem.schema";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,49 @@ function formatTestCaseInput(
   }
 }
 
+function getParamPlaceholder(type: string): string {
+  switch (type) {
+    case "int": case "long": return "e.g. 9";
+    case "double": return "e.g. 3.14";
+    case "boolean": return "true or false";
+    case "string": return "e.g. hello world";
+    case "int[]": case "long[]": return "e.g. [1,2,3,4]";
+    case "double[]": return "e.g. [1.0,2.5]";
+    case "boolean[]": return "e.g. [true,false]";
+    case "string[]": return 'e.g. ["a","b"]';
+    case "int[][]": return "e.g. [[1,2],[3,4]]";
+    default: return "Enter value...";
+  }
+}
+
+function getReturnTypePlaceholder(type?: string): string {
+  switch (type) {
+    case "int": case "long": return "e.g. 42";
+    case "double": return "e.g. 3.14";
+    case "boolean": return "true or false";
+    case "string": return "e.g. hello";
+    case "int[]": case "long[]": return "e.g. [0,1]";
+    case "double[]": return "e.g. [1.0,2.5]";
+    case "boolean[]": return "e.g. [true,false]";
+    case "string[]": return 'e.g. ["a","b"]';
+    case "int[][]": return "e.g. [[1,2],[3,4]]";
+    case "void": return "null";
+    default: return "Enter expected output...";
+  }
+}
+
+function parseParamValue(raw: string, type: string): unknown {
+  const trimmed = raw.trim();
+  if (type === "string") return trimmed;
+  if (type === "boolean") return trimmed === "true";
+  try { return JSON.parse(trimmed); } catch { return trimmed; }
+}
+
+function serializeInputs(inputs: string[], paramTypes: string[]): string {
+  const values = inputs.map((raw, i) => parseParamValue(raw, paramTypes[i] || "string"));
+  return JSON.stringify(values);
+}
+
 interface TestCasePanelProps {
   testCases: TestCaseUI[];
   customTestCases: TestCaseUI[];
@@ -42,7 +85,7 @@ interface TestCasePanelProps {
   onRemoveCustomTestCase: (id: number) => void;
   results: TestCaseResult[];
   isRunning: boolean;
-  signature?: { parameters?: Array<{ name: string; type: string }> };
+  signature?: { parameters?: Array<{ name: string; type: string }>; returnType?: string };
   runOutput?: {
     stdout?: string | null;
     stderr?: string | null;
@@ -61,9 +104,22 @@ const TestCasePanel = ({
   signature,
   runOutput,
 }: TestCasePanelProps) => {
+  const params = signature?.parameters ?? [];
+  const hasSignature = params.length > 0;
+
   const [showAddForm, setShowAddForm] = useState(false);
-  const [customInput, setCustomInput] = useState("");
+  const [customInputs, setCustomInputs] = useState<string[]>(() => Array(params.length).fill(""));
   const [customExpectedOutput, setCustomExpectedOutput] = useState("");
+
+  useEffect(() => {
+    setCustomInputs((prev) => {
+      if (prev.length === params.length) return prev;
+      const next = [...prev];
+      while (next.length < params.length) next.push("");
+      if (next.length > params.length) next.length = params.length;
+      return next;
+    });
+  }, [params.length]);
   const [activeTab, setActiveTab] = useState<number | null>(null);
 
   const allTestCases = [...testCases, ...customTestCases];
@@ -71,17 +127,24 @@ const TestCasePanel = ({
   const hasResults = results.length > 0;
   const allPassed = hasResults && passedCount === allTestCases.length;
 
+  const hasAnyInput = hasSignature
+    ? customInputs.some((v) => v.trim() !== "")
+    : false;
+
   const handleAddCustom = () => {
-    if (!customInput.trim()) return;
+    if (!hasAnyInput) return;
+
+    const paramTypes = params.map((p) => p.type);
+    const inputStr = serializeInputs(customInputs, paramTypes);
 
     const newTestCase = {
       id: Date.now(),
-      input: customInput.trim(),
+      input: inputStr,
       expectedOutput: customExpectedOutput.trim(),
       isCustom: true,
     };
     onAddCustomTestCase(newTestCase);
-    setCustomInput("");
+    setCustomInputs(Array(params.length).fill(""));
     setCustomExpectedOutput("");
     setShowAddForm(false);
   };
@@ -89,7 +152,7 @@ const TestCasePanel = ({
   const handleCloseAddModal = (open: boolean) => {
     setShowAddForm(open);
     if (!open) {
-      setCustomInput("");
+      setCustomInputs(Array(params.length).fill(""));
       setCustomExpectedOutput("");
     }
   };
@@ -347,40 +410,77 @@ const TestCasePanel = ({
                   New Custom Test Case
                 </DialogTitle>
                 <DialogDescription>
-                  Add a custom test case with input and expected output to run against your code.
+                  {hasSignature
+                    ? "Enter values for each parameter to create a test case."
+                    : "Add a custom test case with input and expected output."}
                 </DialogDescription>
               </DialogHeader>
 
               <div className="space-y-4 py-2">
-                <div className="space-y-2">
-                  <label
-                    htmlFor="add-tc-input"
-                    className="text-xs font-mono text-muted-foreground uppercase tracking-wider"
-                  >
-                    Input
-                  </label>
-                  <textarea
-                    id="add-tc-input"
-                    value={customInput}
-                    onChange={(e) => setCustomInput(e.target.value)}
-                    className="w-full h-24 bg-muted/50 border border-border rounded-lg p-3 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all placeholder:text-muted-foreground/50"
-                    placeholder="Enter test input..."
-                  />
-                </div>
+                {hasSignature ? (
+                  <div className="space-y-3">
+                    <label className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
+                      Input Parameters
+                    </label>
+                    {params.map((param, pIdx) => (
+                      <div key={pIdx} className="space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-mono font-medium text-foreground/80">
+                            {param.name || `arg${pIdx}`}
+                          </span>
+                          <span className="text-[11px] font-mono text-muted-foreground/60">
+                            ({param.type})
+                          </span>
+                        </div>
+                        <input
+                          value={customInputs[pIdx] ?? ""}
+                          onChange={(e) => {
+                            const next = [...customInputs];
+                            next[pIdx] = e.target.value;
+                            setCustomInputs(next);
+                          }}
+                          className="w-full bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all placeholder:text-muted-foreground/40"
+                          placeholder={getParamPlaceholder(param.type)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="add-tc-input"
+                      className="text-xs font-mono text-muted-foreground uppercase tracking-wider"
+                    >
+                      Input
+                    </label>
+                    <textarea
+                      id="add-tc-input"
+                      value={customInputs[0] ?? ""}
+                      onChange={(e) => setCustomInputs([e.target.value])}
+                      className="w-full h-24 bg-muted/50 border border-border rounded-lg p-3 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all placeholder:text-muted-foreground/50"
+                      placeholder="Enter test input..."
+                    />
+                  </div>
+                )}
 
-                <div className="space-y-2">
-                  <label
-                    htmlFor="add-tc-expected"
-                    className="text-xs font-mono text-muted-foreground uppercase tracking-wider"
-                  >
-                    Expected Output <span className="text-muted-foreground/60">(optional)</span>
-                  </label>
-                  <textarea
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <label
+                      htmlFor="add-tc-expected"
+                      className="text-xs font-mono text-muted-foreground uppercase tracking-wider"
+                    >
+                      Expected Output
+                    </label>
+                    <span className="text-[11px] text-muted-foreground/60">
+                      (optional{signature?.returnType ? ` \u00b7 ${signature.returnType}` : ""})
+                    </span>
+                  </div>
+                  <input
                     id="add-tc-expected"
                     value={customExpectedOutput}
                     onChange={(e) => setCustomExpectedOutput(e.target.value)}
-                    className="w-full h-20 bg-muted/50 border border-border rounded-lg p-3 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all placeholder:text-muted-foreground/50"
-                    placeholder="Enter expected output..."
+                    className="w-full bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all placeholder:text-muted-foreground/40"
+                    placeholder={getReturnTypePlaceholder(signature?.returnType)}
                   />
                 </div>
               </div>
@@ -395,7 +495,7 @@ const TestCasePanel = ({
                 </Button>
                 <Button
                   onClick={handleAddCustom}
-                  disabled={!customInput.trim()}
+                  disabled={!hasAnyInput}
                   className="font-mono arena-glow"
                 >
                   <Plus className="h-4 w-4 mr-1.5" />

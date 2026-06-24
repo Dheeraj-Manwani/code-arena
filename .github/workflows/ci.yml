@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+# Each service is built/typechecked/tested independently because they use
+# different package managers (api-http -> pnpm, judge-worker/realtime-gateway -> npm).
+jobs:
+  api-http:
+    name: api-http (typecheck + test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api-http
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: api-http/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Generate Prisma client
+        # Invoked directly to bypass pnpm's pre-run deps check (build scripts are gated).
+        run: node node_modules/prisma/build/index.js generate
+      - name: Typecheck
+        run: node node_modules/typescript/bin/tsc --noEmit
+      - name: Test
+        run: npx vitest run
+
+  judge-worker:
+    name: judge-worker (typecheck + test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: judge-worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: judge-worker/package-lock.json
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+
+  realtime-gateway:
+    name: realtime-gateway (typecheck)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: realtime-gateway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Typecheck
+        run: npx tsc --noEmit
