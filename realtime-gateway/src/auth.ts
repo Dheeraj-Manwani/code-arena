@@ -3,6 +3,8 @@ import jwt from "jsonwebtoken";
 interface TokenClaims {
   userId: number;
   role: string;
+  /** JWT `exp` in seconds since epoch; Infinity when the token carries no expiry. */
+  exp: number;
 }
 
 export function verifyToken(token: string): TokenClaims | null {
@@ -26,7 +28,11 @@ export function verifyToken(token: string): TokenClaims | null {
       return null;
     }
 
-    return { userId, role };
+    // jwt.verify already rejects expired tokens; exp drives the mid-connection
+    // re-check (issues.md §8.4). Tokens without exp never expire mid-connection.
+    const exp = typeof record.exp === "number" ? record.exp : Number.POSITIVE_INFINITY;
+
+    return { userId, role, exp };
   } catch {
     return null;
   }

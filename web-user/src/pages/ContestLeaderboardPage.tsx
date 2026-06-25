@@ -1,9 +1,11 @@
+import { useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Trophy, ArrowRight } from "lucide-react";
 import { useContestAttemptQuery } from "@/queries/contest.queries";
 import ContestLeaderboardPanel from "@/components/contest/ContestLeaderboardPanel";
 import { Loader } from "@/components/Loader";
+import { contestWebSocket } from "@/lib/websocket";
 
 const ContestLeaderboardPage = () => {
   const { contestId: conId, attemptId: attId } = useParams();
@@ -15,6 +17,13 @@ const ContestLeaderboardPage = () => {
     contestId,
     attemptId
   );
+
+  // Open the realtime connection so the leaderboard updates live on this page too.
+  useEffect(() => {
+    if (contestId == null || Number.isNaN(contestId)) return;
+    contestWebSocket.connect(contestId);
+    return () => contestWebSocket.disconnect();
+  }, [contestId]);
 
   if (!contestId || !attemptId) {
     navigate("/contests", { replace: true });
@@ -61,7 +70,7 @@ const ContestLeaderboardPage = () => {
 
       <main className="flex-1 min-h-0 overflow-hidden p-6">
         <div className="h-full max-w-4xl mx-auto">
-          <ContestLeaderboardPanel />
+          <ContestLeaderboardPanel contestId={contestId} />
         </div>
       </main>
     </div>

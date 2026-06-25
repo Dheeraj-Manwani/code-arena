@@ -116,4 +116,82 @@ describe("computeLeaderboard", () => {
     expect(board.every((e) => e.rank === 1)).toBe(true);
     expect(board.every((e) => e.totalPoints === 0)).toBe(true);
   });
+
+  describe("tiebreaker by earliest time-to-last-accepted-submission (issues.md §4.3)", () => {
+    it("ranks the earlier scorer ahead when totals tie", () => {
+      const board = computeLeaderboard(
+        [
+          { userId: 1, pointsEarned: 50, submittedAt: "2026-01-01T10:05:00Z" },
+          { userId: 2, pointsEarned: 50, submittedAt: "2026-01-01T10:02:00Z" },
+        ],
+        [],
+        [
+          { id: 1, name: "Alice" },
+          { id: 2, name: "Bob" },
+        ]
+      );
+
+      // Bob locked in 50 points earlier → rank 1; Alice rank 2 (no shared rank).
+      expect(board.map((e) => e.userId)).toEqual([2, 1]);
+      expect(board.map((e) => e.rank)).toEqual([1, 2]);
+    });
+
+    it("uses the user's LAST scoring submission time (max), not the first", () => {
+      const board = computeLeaderboard(
+        [
+          // Alice: two 25-pt MCQs, last at 10:10
+          { userId: 1, pointsEarned: 25, submittedAt: "2026-01-01T10:01:00Z" },
+          { userId: 1, pointsEarned: 25, submittedAt: "2026-01-01T10:10:00Z" },
+          // Bob: two 25-pt MCQs, last at 10:08 → earlier final → ranks ahead
+          { userId: 2, pointsEarned: 25, submittedAt: "2026-01-01T10:03:00Z" },
+          { userId: 2, pointsEarned: 25, submittedAt: "2026-01-01T10:08:00Z" },
+        ],
+        [],
+        [
+          { id: 1, name: "Alice" },
+          { id: 2, name: "Bob" },
+        ]
+      );
+
+      expect(board.map((e) => e.userId)).toEqual([2, 1]);
+    });
+
+    it("for DSA uses the earliest time the MAX score was achieved (ignores later equal re-submits)", () => {
+      const board = computeLeaderboard(
+        [],
+        [
+          // Alice reaches 100 on problem 100 at 10:05, then re-submits 100 later at 10:20
+          { userId: 1, problemId: 100, pointsEarned: 100, submittedAt: "2026-01-01T10:05:00Z" },
+          { userId: 1, problemId: 100, pointsEarned: 100, submittedAt: "2026-01-01T10:20:00Z" },
+          // Bob reaches 100 at 10:10
+          { userId: 2, problemId: 100, pointsEarned: 100, submittedAt: "2026-01-01T10:10:00Z" },
+        ],
+        [
+          { id: 1, name: "Alice" },
+          { id: 2, name: "Bob" },
+        ]
+      );
+
+      // Alice first hit 100 at 10:05 (earlier than Bob's 10:10) → Alice ranks 1.
+      expect(board.map((e) => e.userId)).toEqual([1, 2]);
+      expect(board.map((e) => e.rank)).toEqual([1, 2]);
+    });
+
+    it("still shares a rank when totals AND lock-in times are identical", () => {
+      const board = computeLeaderboard(
+        [
+          { userId: 1, pointsEarned: 50, submittedAt: "2026-01-01T10:00:00Z" },
+          { userId: 2, pointsEarned: 50, submittedAt: "2026-01-01T10:00:00Z" },
+          { userId: 3, pointsEarned: 10, submittedAt: "2026-01-01T10:01:00Z" },
+        ],
+        [],
+        users
+      );
+
+      const ranks = new Map(board.map((e) => [e.userId, e.rank]));
+      expect(ranks.get(1)).toBe(1);
+      expect(ranks.get(2)).toBe(1);
+      expect(ranks.get(3)).toBe(3);
+    });
+  });
 });

@@ -84,6 +84,7 @@ export const getMcqSubmissionsByContest = async (contestId: number) => {
     select: {
       userId: true,
       pointsEarned: true,
+      submittedAt: true,
     },
   });
 };
@@ -97,6 +98,7 @@ export const getDsaSubmissionsByContest = async (contestId: number) => {
       userId: true,
       problemId: true,
       pointsEarned: true,
+      submittedAt: true,
     },
   });
 };

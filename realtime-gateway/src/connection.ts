@@ -1,6 +1,7 @@
 import WebSocket from "ws";
 import { verifyToken } from "./auth";
 import { joinRoom, leaveRoom } from "./rooms";
+import { setClientState, getClientState, deleteClientState } from "./clients";
 
 interface AuthHandshakeMessage {
   type: "AUTH";
@@ -32,20 +33,23 @@ function parseHandshakeMessage(raw: WebSocket.RawData): AuthHandshakeMessage | n
 }
 
 export function handleConnection(ws: WebSocket): void {
-  const joinedRooms = new Set<number>();
-  let isAuthenticated = false;
-
+  // Close the socket if it never authenticates.
   const authTimeout = setTimeout(() => {
-    if (!isAuthenticated) {
+    if (!getClientState(ws)) {
       ws.close();
     }
   }, 10_000);
 
-  ws.once("message", (raw) => {
+  // §8.2: a real message router (ws.on, not ws.once) so a socket can (re-)auth and
+  // join additional rooms over its lifetime instead of being locked to one message.
+  ws.on("message", (raw) => {
     const message = parseHandshakeMessage(raw);
     if (!message) {
-      ws.send(JSON.stringify({ type: "ERROR", message: "Unauthorized" }));
-      ws.close();
+      // Unknown frame: reject only if the socket hasn't authenticated yet.
+      if (!getClientState(ws)) {
+        ws.send(JSON.stringify({ type: "ERROR", message: "Unauthorized" }));
+        ws.close();
+      }
       return;
     }
 
@@ -57,9 +61,22 @@ export function handleConnection(ws: WebSocket): void {
     }
 
     clearTimeout(authTimeout);
-    isAuthenticated = true;
-    joinRoom(message.contestId, ws);
-    joinedRooms.add(message.contestId);
+
+    let state = getClientState(ws);
+    if (!state) {
+      state = { userId: claims.userId, tokenExp: claims.exp, isAlive: true, rooms: new Set() };
+      setClientState(ws, state);
+    } else {
+      // Re-auth on an existing socket (e.g. refreshed token) — update the claims.
+      state.userId = claims.userId;
+      state.tokenExp = claims.exp;
+    }
+
+    if (!state.rooms.has(message.contestId)) {
+      joinRoom(message.contestId, ws);
+      state.rooms.add(message.contestId);
+    }
+
     ws.send(
       JSON.stringify({
         type: "CONNECTED",
@@ -69,11 +86,22 @@ export function handleConnection(ws: WebSocket): void {
     );
   });
 
+  // §8.3: heartbeat — a pong marks the socket alive for the next ping cycle.
+  ws.on("pong", () => {
+    const state = getClientState(ws);
+    if (state) {
+      state.isAlive = true;
+    }
+  });
+
   ws.on("close", () => {
     clearTimeout(authTimeout);
-    for (const contestId of joinedRooms) {
-      leaveRoom(contestId, ws);
+    const state = getClientState(ws);
+    if (state) {
+      for (const contestId of state.rooms) {
+        leaveRoom(contestId, ws);
+      }
     }
-    joinedRooms.clear();
+    deleteClientState(ws);
   });
 }
