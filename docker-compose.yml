@@ -1,3 +1,5 @@
+# Economy Service: the backend is a single Redis-free process (api-http) that
+# depends only on Postgres + Judge0 (external API). Redis has been removed.
 services:
   postgres:
     image: postgres:16-alpine
@@ -11,14 +13,5 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-
 volumes:
   postgres_data:
-  redis_data:

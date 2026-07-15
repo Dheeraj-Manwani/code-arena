@@ -1,6 +1,16 @@
 # Judge Worker Service
 
-The `judge-worker` is a standalone Node.js + TypeScript microservice that consumes two BullMQ queues on Redis:
+> ⚠️ **Superseded — historical.** The standalone `judge-worker` service was
+> **consolidated into `api-http`** and its directory deleted (Economy Service —
+> see `ECONOMY_SERVICE.md`). Judging now runs **in-process**: submits go through
+> an in-process pool (`api-http/src/jobs/pool.ts`, no BullMQ/Redis) and `/api/run`
+> executes inline (`api-http/src/judge/runOnce.ts`). The Judge0 submit/poll/parse
+> and verdict-derivation logic below is still accurate — it lives in
+> `api-http/src/judge/*` — but the BullMQ queues, Redis pub/sub, and internal
+> HTTP callbacks described here no longer exist. This file is kept for the
+> pipeline reference; ignore the transport/deployment sections.
+
+The `judge-worker` was a standalone Node.js + TypeScript microservice that consumed two BullMQ queues on Redis:
 
 1. **`judge`** — DSA **submit** jobs: execute a full test harness, derive a verdict, and PATCH results back to `api-http`.
 2. **`judge-run`** — **Run** jobs: execute arbitrary (or harness-wrapped) code once, then **publish** the raw Judge0 result to a Redis channel so `api-http` can complete a waiting HTTP request.
@@ -128,7 +138,7 @@ On success, the worker calls:
 - **`PATCH /api/internal/submissions/dsa/:dsaSubmissionId`** — verdict fields.
 - **`PATCH /api/internal/attempts/:attemptId/score`** with `{ pointsToAdd }` **only if** `pointsEarned > 0` (full problem points on `accepted`).
 
-These routes are the **service contract** documented in [api-http contract](#api-http-contract-internal-patch). Wire them in `api-http` if they are not registered yet.
+These routes are the **service contract** documented in [api-http contract](#api-http-contract-internal-patch). They are implemented in `api-http/src/routes/internal.routes.ts` (secured by a constant-time `BACKEND_INTERNAL_SECRET` check).
 
 ---
 
@@ -210,7 +220,7 @@ if pointsEarned > 0 → updateAttemptScore(attemptId, pointsEarned)
 **Errors**
 
 - Invalid payload (`ZodError`) → thrown as **`UnrecoverableError`** (from `bullmq`, via `./errors`) → **no BullMQ retry**.
-- Judge0 / poll / backend errors → may trigger **BullMQ retries** per job options (see [Retry & Failure Strategy](#retry--failure-strategy)).
+- Errors are classified by **`isTransientError`** (`./errors`): transient failures (Judge0/backend 429/5xx via `TRANSIENT_HTTP_STATUSES` = `408, 425, 429, 500, 502, 503, 504`, poll timeouts, network blips) are **rethrown** so BullMQ retries with backoff; terminal failures (4xx, config/unsupported-language) are wrapped in **`UnrecoverableError`** so they **fail fast without retry**.
 
 ---
 
@@ -381,7 +391,7 @@ Single **`ioredis`** instance:
 | Class | When | Submit retries? | Run retries? |
 |-------|------|-----------------|--------------|
 | `UnrecoverableError` (`bullmq`) | Bad Zod payload; run failure after publish | No | No (run uses this after notifying client) |
-| `JudgeApiError` | Judge0 non-2xx on submit/poll | Yes | Yes (until run catches and publishes + Unrecoverable) |
+| `JudgeApiError` | Judge0 non-2xx on submit/poll | Only if transient (5xx/429/408/425 per `isTransientError`); 4xx → wrapped `UnrecoverableError` | Yes (until run catches and publishes + Unrecoverable) |
 | `PollTimeoutError` | 20 polls without terminal status | Yes | Yes |
 | `BackendApiError` | `api-http` 5xx (response interceptor) | Yes | N/A (run does not call backend) |
 
@@ -587,7 +597,7 @@ docker run --env-file .env judge-worker
 
 ## api-http contract (internal PATCH)
 
-The **submit** worker expects `api-http` to expose authenticated internal routes (Bearer `BACKEND_INTERNAL_SECRET`). Implement or verify these on the backend:
+The **submit** worker calls these authenticated internal routes on `api-http` (Bearer `BACKEND_INTERNAL_SECRET`), implemented in `src/routes/internal.routes.ts`:
 
 ### `PATCH /api/internal/submissions/dsa/:dsaSubmissionId`
 

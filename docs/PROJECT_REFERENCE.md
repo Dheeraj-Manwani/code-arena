@@ -1,6 +1,8 @@
 # Code Arena — Complete Project Reference
 
-This document covers everything implemented across all services in the Code Arena monorepo as of the current state of the codebase.
+This document covers the architecture of the Code Arena monorepo. Verified against `master` on 2026-07-13. For the list of open issues see `issues.md`; for the delivery plan see `ROADMAP.md`.
+
+> **Economy Service consolidation.** The backend is now a **single Redis-free process** (`api-http`): REST + WebSocket on one port, DSA judging via an in-process pool, `/api/run` inline, realtime over an in-process event bus. The former standalone `judge-worker` and `realtime-gateway` services were folded into `api-http/src/{jobs,judge,realtime}` and their directories deleted. Sections 6 (judge-worker) and the realtime notes below describe that logic, which now runs **in-process** — the BullMQ queues, Redis pub/sub, and `/api/internal` HTTP callbacks they mention no longer exist. See `ECONOMY_SERVICE.md`.
 
 ---
 
@@ -61,11 +63,13 @@ The platform is split into independent services that communicate through HTTP AP
 code-arena/
 ├── api-http/           # Express backend (REST API + Prisma + PostgreSQL)
 ├── web-user/           # React frontend for contestees (Vite + TanStack Query)
-├── judge-worker/       # BullMQ worker for DSA code judging via Judge0
-├── realtime-gateway    # websocket service responsible for notification and realtime leaderboard using redis sorted set (to be implemented)
+│                       #   (judge-worker + realtime-gateway now live inside api-http/src)
+├── web-admin/          # React SPA for creators/admins (parallel app)
 ├── docs/               # Documentation
 │   ├── API_HTTP_DB_REFERENCE.md
 │   ├── JUDGE_WORKER.md
+│   ├── ROADMAP.md
+│   ├── issues.md
 │   └── PROJECT_REFERENCE.md  (this file)
 └── README.md           # Root-level project overview
 ```
@@ -119,7 +123,13 @@ All responses use `sendSuccess(res, data)` / `sendError(res, code, message, stat
 api-http/src/
 ├── index.ts                              # Express app setup + route mounting
 ├── lib/
-│   └── db.ts                             # Prisma singleton
+│   ├── db.ts                             # Prisma singleton
+│   ├── queue.ts                          # BullMQ queue defaults (attempts, backoff)
+│   ├── judgeQueue.ts                     # enqueueJudgeJob / enqueueRunJob (producer)
+│   ├── redis.ts                          # ioredis connection
+│   └── redisPublisher.ts                 # Redis publisher for run/leaderboard events
+├── config/
+│   └── env.ts                            # Zod-validated env, parsed at startup
 ├── controllers/
 │   ├── auth.controller.ts
 │   ├── contest.controller.ts
@@ -138,6 +148,7 @@ api-http/src/
 │   ├── problem.routes.ts
 │   ├── profile.routes.ts
 │   ├── run.routes.ts
+│   ├── internal.routes.ts                # Worker callbacks (Bearer BACKEND_INTERNAL_SECRET)
 │   ├── stats.routes.ts
 │   └── submission.routes.ts
 ├── services/
@@ -146,7 +157,7 @@ api-http/src/
 │   ├── leaderboard.service.ts
 │   ├── problem.service.ts
 │   ├── profile.service.ts
-│   ├── run.service.ts                    # Empty — not yet implemented
+│   ├── run.service.ts                    # POST /api/run — harness + Redis pub/sub round-trip
 │   ├── stats.service.ts
 │   └── submission.service.ts
 ├── repositories/
@@ -160,7 +171,8 @@ api-http/src/
 │   └── user.repository.ts
 ├── middleware/
 │   ├── auth.ts                           # JWT auth + role guards
-│   └── error-handler.ts                  # Global error handler
+│   ├── rate-limit.ts                     # Rate limiting for auth/run routes
+│   └── error-handler.ts                  # Global error handler (Prisma-sanitised)
 ├── schema/
 │   ├── auth.schema.ts
 │   ├── contest.schema.ts
@@ -181,7 +193,6 @@ api-http/src/
 │   ├── response.ts                       # sendSuccess / sendError helpers
 │   ├── otp.ts                            # OTP generation + Resend email
 │   ├── mappers.ts                        # DB→API shape transformers
-│   ├── codeExecutor.ts                   # Stub — always returns "accepted"
 │   └── boilerplate/
 │       ├── types.ts                      # Boilerplate type definitions
 │       ├── index.ts                      # Entrypoint for boilerplate utilities
@@ -204,8 +215,8 @@ api-http/src/
 | `SubmissionStatus` | `pending`, `accepted`, `wrong_answer`, `time_limit_exceeded`, `runtime_error` |
 | `ContestType` | `practice`, `competitive` |
 | `Difficulty` | `easy`, `medium`, `hard` |
-| `ContestStatus` | `draft`, `published`, `active`, `completed`, `cancelled` |
-| `AttemptStatus` | `in_progress`, `submitted`, `timed_out` |
+| `ContestStatus` | `draft`, `published`, `cancelled` (unused `active`/`completed` were removed; phase is derived from dates via `getContestPhase`) |
+| `AttemptStatus` | `in_progress`, `submitted`, `timed_out`, `abandoned` |
 
 **Models:**
 
@@ -221,7 +232,7 @@ api-http/src/
 | `McqSubmission` | MCQ answer submission | `id`, `attemptId`, `questionId`, `selectedOption`, `isCorrect`, `pointsEarned` |
 | `DsaSubmission` | DSA code submission | `id`, `attemptId`, `problemId`, `language`, `code`, `status`, `pointsEarned`, `testCasesPassed`, `totalTestCases`, `executionTime` |
 | `DraftAnswer` | Auto-saved draft | `id`, `attemptId`, `problemId`, `type`, `mcqAnswer?`, `dsaCode?`, `language?` |
-| `ContestLeaderboard` | Leaderboard row | `id`, `contestId`, `userId`, `totalPoints`, `rank` — **exists in schema but not used in code** |
+| `ContestLeaderboard` | Leaderboard row | `id`, `contestId`, `userId`, `totalPoints`, `rank` — **read** by profile/attempt repos, but **not yet written** (leaderboard is still computed in memory — see `issues.md §1.1`) |
 | `EmailOtp` | Email OTP for verification | `id`, `email`, `hashedOtp`, `expiresAt`, `isUsed` |
 
 **Key relationships:**
@@ -233,7 +244,7 @@ api-http/src/
 
 **Unique constraints:**
 - `McqSubmission`: `@@unique([attemptId, questionId])` — one submission per MCQ per attempt
-- `DsaSubmission`: `@@unique([attemptId, problemId])` — one submission per DSA per attempt
+- `DsaSubmission`: no uniqueness — **re-submission is allowed** (indexed on `[attemptId, problemId]`); scoring takes `MAX(pointsEarned)` per `(user, problem)`
 - `DraftAnswer`: `@@unique([attemptId, problemId])` — one draft per problem per attempt
 
 ---
@@ -323,7 +334,7 @@ api-http/src/
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| POST | `/api/run` | JWT | Run code — **service is empty, not yet implemented** |
+| POST | `/api/run` | JWT | Run code via the `judge-run` queue + Redis pub/sub round-trip |
 
 ---
 
@@ -424,12 +435,14 @@ The harness embeds all test cases and expected outputs. It prints structured mar
 
 ---
 
-### 4.9 Code Execution (Current State)
+### 4.9 Code Execution
 
-- `src/util/codeExecutor.ts` — **stub**: always returns `status: "accepted"` with `testCasesPassed: 4` regardless of input
-- `src/services/run.service.ts` — **empty**: `POST /api/run` returns no meaningful data
-- DSA submission path (`submission.service.submitDsa`) calls the stub executor and saves results directly
-- The real execution path will route through `judge-worker` via BullMQ (not yet wired)
+Real code execution is live end-to-end (the old `codeExecutor.ts` stub was deleted):
+
+- **Submit** (`submission.service.submitDsa`): creates a `pending` `DsaSubmission`, builds the harness via `generateJudgeBoilerplate`, and hands a job to the **in-process pool** via `enqueueSubmitJob` (`jobs/submitQueue.ts`). The pool (`jobs/pool.ts`) runs it on Judge0 and writes the verdict + score with a **direct repository call** (`service/submissionResult.service.ts`), then emits on the in-process bus for the WebSocket broadcast. No Redis, no HTTP callback. Crash-interrupted `pending` rows are re-judged on boot by `jobs/reconcile.ts`.
+- **Run** (`run.service.ts`): `POST /api/run` builds a harness and executes it **inline** via `judge/runOnce.ts` (concurrency-capped by a semaphore, `RUN_TIMEOUT_MS` timeout). No queue, no pub/sub.
+
+See `ECONOMY_SERVICE.md` for the consolidation and `JUDGE_WORKER.md` for the (still-accurate) Judge0 pipeline reference.
 
 ---
 
@@ -539,10 +552,10 @@ web-user/src/
 | `ContestDetails` | Contest info page with "Enter Contest" dialog |
 | `ContestPage` | Full-screen contest attempt: question navigation, MCQ/DSA views, code editor, test panel, timer, submit dialog |
 | `ContestLeaderboardPage` | Leaderboard during active contest attempt |
-| `MyContests` | User's past attempts — **not yet populated** (empty `attempts` array + TODO) |
+| `MyContests` | User's past attempts — paginated via `useAttemptsQuery` |
 | `Leaderboard` | Standalone leaderboard page per contest |
 | `Profile` | User profile with stats and recent attempt history |
-| `ContestResultsPage` | Post-attempt results — **placeholder** |
+| `ContestResultsPage` | Post-attempt results — renders `ResultsPage` from `useAttemptResultsQuery` |
 | `NotFound` | 404 page |
 
 ---
@@ -571,8 +584,8 @@ web-user/src/
 | `MCQQuestion` | Multiple choice question with option selection |
 | `DSAQuestion` | Monaco code editor + language selector + run code button |
 | `TestCasePanel` | Test case input/output display with tabs for each case |
-| `ContestNavigationFooter` | Question prev/next navigation — **currently commented out** |
-| `ContestLeaderboardPanel` | In-contest leaderboard — **uses mock animated data**, not connected to API |
+| `ContestNavigationFooter` | Question prev/next navigation with per-question submitted status |
+| `ContestLeaderboardPanel` | In-contest leaderboard — live via `useLeaderboardQuery` + WS `LEADERBOARD_UPDATE`, with a connection indicator |
 | `ResultsPage` | Reusable results display component |
 
 #### Auth
@@ -695,7 +708,13 @@ The frontend has its own `src/schema/` folder with Zod schemas that mirror the b
 
 ---
 
-## 6. judge-worker (Submission Processor)
+## 6. judge-worker (Submission Processor) — *now in-process in api-http*
+
+> This section describes the submit pipeline, which was **moved into `api-http`**
+> (Economy Service). The Judge0 submit/poll/parse + verdict logic is unchanged and
+> lives in `api-http/src/judge/*`, driven by the in-process pool
+> (`api-http/src/jobs/pool.ts`) — but the BullMQ/Redis queues and the internal
+> HTTP callbacks below no longer exist. Retained as a pipeline reference.
 
 ### 6.1 Architecture
 
@@ -906,20 +925,15 @@ __ERROR__exception message
 
 ---
 
-## 8. What Is Not Yet Implemented
+## 8. Open Items
+
+The core flows above (auth, contests, real DSA judging + run, live leaderboard, attempt lifecycle, realtime gateway, security hardening) are all implemented. The remaining open items are tracked in full in **`issues.md`**; the headline ones:
 
 | Item | Service | Status |
 |---|---|---|
-| `POST /api/run` (run code without submitting) | `api-http` | Service is empty |
-| `PATCH /api/internal/submissions/dsa/:id` (store verdict) | `api-http` | Route does not exist yet — required by `judge-worker` |
-| `PATCH /api/internal/attempts/:id/score` (update score) | `api-http` | Route does not exist yet — required by `judge-worker` |
-| BullMQ job enqueue on DSA submit | `api-http` | Not yet wired — `submitDsa` uses stub `codeExecutor` |
-| Real code execution | `api-http` | `codeExecutor.ts` is a stub returning hardcoded "accepted" |
-| `ContestLeaderboardPanel` (live data) | `web-user` | Uses mock animated data, not connected to leaderboard API |
-| `MyContests` page | `web-user` | Empty attempts array with TODO |
-| `ContestResultsPage` | `web-user` | Placeholder copy |
-| `ContestNavigationFooter` | `web-user` | Commented out in `ContestPage` |
-| `stats` queries | `web-user` | Commented/stubbed |
-| `ContestLeaderboard` table usage | `api-http` | Model exists in Prisma but leaderboard is computed in memory |
-| `docker-compose.yml` | root | No orchestration config for running all services together |
-| `web-admin` | — | Referenced in root README but not present in the current workspace |
+| Materialise leaderboard into `ContestLeaderboard` | `api-http` | Table is read but never written; leaderboard is still computed in memory (`issues.md §1.1`) |
+| `/api/run` opens a fresh Redis connection per request | `api-http` | Should reuse a pooled/long-lived subscriber (`§1.2`) |
+| Shared `@code-arena/schemas` package | monorepo | Zod schemas still copied across 4 services (`§2.1`) |
+| Unify boilerplate generator | `api-http` / `web-admin` | Two divergent implementations (`§2.2`) |
+| Full `docker-compose.yml` | root | Only Postgres + Redis; app services started by hand (`§2.4`) |
+| Email notifications beyond OTP/reset | `api-http` | No contest-start / verdict notifications (`§3.1`) |

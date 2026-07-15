@@ -1,6 +1,6 @@
 # API-HTTP and Database Field Reference
 
-This document explains how the `api-http` backend is organized and what every database field is used for.
+This document explains how the `api-http` backend is organized and what every database field is used for. Verified against `master` on 2026-07-13.
 
 ---
 
@@ -84,6 +84,13 @@ Server entrypoint: `src/index.ts`
 - `PUT /contests/:contestId/attempt/:attemptId/draft/mcq/:questionId`
 - `PUT /contests/:contestId/attempt/:attemptId/draft/dsa/:problemId`
 - `POST /contests/:contestId/attempt/:attemptId/submit`
+- `GET /attempts` (paginated attempt history — backs `MyContests`)
+- `GET /attempts/:attemptId/results` (per-attempt results — backs `ContestResultsPage`)
+
+> The old `/api/internal/*` routes (worker → api-http verdict/score callbacks) were
+> **removed**: judging runs in-process now and writes verdicts via direct repository
+> calls, so there is no internal HTTP seam and no `BACKEND_INTERNAL_SECRET`
+> (Economy Service — see `ECONOMY_SERVICE.md`).
 
 ### Other routes
 
@@ -103,7 +110,14 @@ Server entrypoint: `src/index.ts`
 - `ACCESS_TOKEN_SECRET`: JWT signing key for access tokens.
 - `REFRESH_TOKEN_SECRET`: JWT signing key for refresh tokens.
 - `RESEND_API_KEY`: API key for sending OTP/reset emails.
-- `NODE_ENV`: Affects behavior like secure cookies and Prisma client caching.
+- `NODE_ENV`: Affects behavior like secure cookies, Prisma client caching, and log format (`morgan` `combined` vs `dev`).
+- `JUDGE0_API_URL` / `JUDGE0_RAPIDAPI_HOST` / `JUDGE0_RAPIDAPI_KEY`: Judge0 (RapidAPI) — required, since judging now runs in-process.
+- `WORKER_CONCURRENCY` / `JUDGE_RATE_MAX` / `JUDGE_RATE_WINDOW_MS` / `RUN_MAX_CONCURRENCY` / `RUN_TIMEOUT_MS`: in-process judge tuning knobs.
+- `ALLOWED_HOSTS`: Comma-separated CORS origins.
+
+There are **no** `REDIS_*` or `BACKEND_INTERNAL_SECRET` vars — the backend is a single Redis-free process (Economy Service). REST + WebSocket share `PORT`.
+
+Env is validated at startup via a Zod schema (`src/config/env.ts`); the process fails fast with an itemised message on missing/invalid vars.
 
 ---
 
@@ -304,8 +318,8 @@ Indexes: `questionId`, `contestId`, `attemptId`.
 | `contestId` | `Int` (FK -> `Contest.id`) | Contest context. |
 | `attemptId` | `Int` (FK -> `ContestAttempt.id`) | Attempt session context. |
 
-Constraint: unique `(attemptId, problemId)` for one final submission per problem per attempt.  
-Indexes: `problemId`, `contestId`, `attemptId`.
+Re-submission is allowed: there is **no** uniqueness on `(attemptId, problemId)` — multiple rows are expected and scoring takes `MAX(pointsEarned)` per `(user, problem)`.  
+Indexes: `(attemptId, problemId)`, `problemId`, `contestId`, `attemptId`.
 
 ## `ContestLeaderboard`
 
@@ -328,6 +342,7 @@ Constraint: unique `(contestId, userId)`.
 | `otpHash` | `String` | Hashed OTP value (not plain OTP). |
 | `expiresAt` | `DateTime` | OTP expiration cutoff. |
 | `used` | `Boolean` (default `false`) | One-time-use guard flag. |
+| `failedAttempts` | `Int` (default `0`) | Failed verification-guess counter; the code is locked after the configured limit (brute-force protection). |
 | `createdAt` | `DateTime` | OTP creation timestamp. |
 
 Indexes: `(email, used)`, `expiresAt`.

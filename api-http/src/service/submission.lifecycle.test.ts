@@ -17,7 +17,7 @@ vi.mock("../repositories/attempt.repository", () => ({
 }));
 
 vi.mock("../repositories/submission.repository", () => ({}));
-vi.mock("../lib/judgeQueue", () => ({ enqueueJudgeJob: vi.fn() }));
+vi.mock("../jobs/submitQueue", () => ({ enqueueSubmitJob: vi.fn() }));
 
 import * as contestRepo from "../repositories/contest.repository";
 import * as attemptRepo from "../repositories/attempt.repository";

@@ -121,6 +121,20 @@ export const advanceCurrentProblemId = async (
 };
 
 /**
+ * Atomically add points to an attempt's running total. In-process replacement for
+ * the old `PATCH /api/internal/attempts/:id/score` route (Economy Service Phase 2).
+ */
+export const incrementAttemptScore = async (
+    attemptId: number,
+    pointsToAdd: number,
+) => {
+    return await prisma.contestAttempt.update({
+        where: { id: attemptId },
+        data: { totalPoints: { increment: pointsToAdd } },
+    });
+};
+
+/**
  * Lazily close a single attempt whose deadline has passed (issues.md §2.1/§4.6).
  * Returns the effective status — "timed_out" if it was just expired, else unchanged.
  * Idempotent and safe under concurrency thanks to the status guard on the write.

@@ -76,6 +76,54 @@ export const createDsaSubmission = async (data: {
   });
 };
 
+/**
+ * Apply a judge verdict to a DSA submission and return it with the owning
+ * contestId (needed for the realtime broadcast). In-process replacement for the
+ * old `PATCH /api/internal/submissions/dsa/:id` route (Economy Service Phase 2).
+ */
+export const applyDsaVerdict = async (
+  dsaSubmissionId: number,
+  verdict: {
+    status: SubmissionStatus;
+    pointsEarned: number;
+    testCasesPassed: number;
+    totalTestCases: number;
+    executionTime: number | null;
+  }
+) => {
+  return await prisma.dsaSubmission.update({
+    where: { id: dsaSubmissionId },
+    data: {
+      status: verdict.status,
+      pointsEarned: verdict.pointsEarned,
+      testCasesPassed: verdict.testCasesPassed,
+      totalTestCases: verdict.totalTestCases,
+      executionTime: verdict.executionTime,
+    },
+    include: {
+      attempt: {
+        select: { contestId: true },
+      },
+    },
+  });
+};
+
+/**
+ * All `pending` DSA submissions with the problem data needed to rebuild a judge
+ * job (signature, test cases, points). Used by the boot reconciler (Economy
+ * Service Phase 3) to re-enqueue work interrupted by a crash.
+ */
+export const getPendingDsaSubmissionsWithProblem = async () => {
+  return await prisma.dsaSubmission.findMany({
+    where: { status: "pending" },
+    include: {
+      problem: {
+        include: { testCases: true },
+      },
+    },
+  });
+};
+
 export const getMcqSubmissionsByContest = async (contestId: number) => {
   return await prisma.mcqSubmission.findMany({
     where: {

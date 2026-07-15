@@ -1,80 +1,23 @@
-import crypto from "crypto";
-import IORedis from "ioredis";
 import type { RunCodeSchemaType } from "../schema/submission.schema";
-import { enqueueRunJob } from "../lib/judgeQueue";
 import { AppError } from "../errors/app-error";
 import { generateJudgeBoilerplate, type SerializedTestCase } from "../util/boilerplate";
+import { runOnce } from "../judge/runOnce";
+import { Semaphore } from "../lib/semaphore";
+import { RUN_TIMEOUT_MS, RUN_MAX_CONCURRENCY } from "../jobs/constants";
 
-interface RunJobErrorResult {
-  ok: false;
-  runId: string;
-  error: string;
-}
+// Cap concurrent runs so a burst can't spawn unbounded in-flight Judge0 calls
+// (Economy Service Phase 6). Requests that can't get a slot within RUN_TIMEOUT_MS
+// time out with a 504.
+const runSemaphore = new Semaphore(RUN_MAX_CONCURRENCY);
 
-interface RunJobSuccessResult {
-  ok: true;
-  runId: string;
-  stdout: string | null;
-  stderr: string | null;
-  compileOutput: string | null;
-  status: {
-    id: number;
-    description: string;
-  };
-  memory: number | null;
-  executionTime: number | null;
-}
-
-type RunJobResult = RunJobErrorResult | RunJobSuccessResult;
-
-function parseRunJobResult(message: string): RunJobResult {
-  const parsed: unknown = JSON.parse(message);
-  if (!parsed || typeof parsed !== "object") {
-    throw new Error("Invalid run result received from pub/sub");
-  }
-
-  const obj = parsed as Record<string, unknown>;
-  if (obj.ok === false) {
-    if (typeof obj.runId !== "string" || typeof obj.error !== "string") {
-      throw new Error("Invalid failure payload received from pub/sub");
-    }
-    return {
-      ok: false,
-      runId: obj.runId,
-      error: obj.error,
-    };
-  }
-
-  if (
-    obj.ok === true &&
-    typeof obj.runId === "string" &&
-    obj.status &&
-    typeof obj.status === "object"
-  ) {
-    const status = obj.status as Record<string, unknown>;
-    if (typeof status.id !== "number" || typeof status.description !== "string") {
-      throw new Error("Invalid status payload received from pub/sub");
-    }
-    return {
-      ok: true,
-      runId: obj.runId,
-      stdout: typeof obj.stdout === "string" || obj.stdout === null ? obj.stdout : null,
-      stderr: typeof obj.stderr === "string" || obj.stderr === null ? obj.stderr : null,
-      compileOutput:
-        typeof obj.compileOutput === "string" || obj.compileOutput === null ? obj.compileOutput : null,
-      status: {
-        id: status.id,
-        description: status.description,
-      },
-      memory: typeof obj.memory === "number" || obj.memory === null ? obj.memory : null,
-      executionTime:
-        typeof obj.executionTime === "number" || obj.executionTime === null ? obj.executionTime : null,
-    };
-  }
-
-  throw new Error("Unknown run payload received from pub/sub");
-}
-
+/**
+ * Execute user code once and return the Judge0 result (Economy Service Phase 2).
+ *
+ * Previously this enqueued a `judge-run` job, subscribed to a unique Redis
+ * channel, and waited for the worker to publish back (35s timeout). In the
+ * monolith the run executes in-process, so we simply await `runOnce` — no Redis
+ * pub/sub, no per-request subscriber, nothing lost on restart (issues.md §1.2/§1.3).
+ */
 export const runCode = async (data: RunCodeSchemaType) => {
   const { code, language, signature, testCases } = data;
 
@@ -88,62 +31,27 @@ export const runCode = async (data: RunCodeSchemaType) => {
     sourceCode = harnesses[language];
   }
 
-  const responseChannel = `judge:run:result:${Date.now()}:${crypto.randomUUID()}`;
-  const subscriber = new IORedis({
-    host: process.env.REDIS_HOST ?? "localhost",
-    port: Number.parseInt(process.env.REDIS_PORT ?? "6379", 10),
-    password: process.env.REDIS_PASSWORD || undefined,
-    maxRetriesPerRequest: null,
-    enableReadyCheck: false,
+  let timeoutRef: NodeJS.Timeout | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutRef = setTimeout(() => {
+      reject(new AppError("Run request timed out", 504, "RUN_EXECUTION_FAILED"));
+    }, RUN_TIMEOUT_MS);
   });
 
-  let timeoutRef: NodeJS.Timeout | undefined;
+  // Acquire a run slot, then execute — both raced against the timeout so a request
+  // that waits too long for a slot (or for Judge0) fails with 504 rather than hanging.
+  const runPromise = (async () => {
+    const release = await runSemaphore.acquire();
+    try {
+      return await runOnce(language, sourceCode);
+    } finally {
+      release();
+    }
+  })();
 
   try {
-    const waitForResultPromise = new Promise<RunJobResult>((resolve, reject) => {
-      const handleMessage = (channel: string, message: string) => {
-        if (channel !== responseChannel) {
-          return;
-        }
-
-        try {
-          const result = parseRunJobResult(message);
-          subscriber.off("message", handleMessage);
-          resolve(result);
-        } catch (error) {
-          subscriber.off("message", handleMessage);
-          reject(
-            error instanceof Error
-              ? error
-              : new Error("Invalid run result received from pub/sub")
-          );
-        }
-      };
-
-      subscriber.on("message", handleMessage);
-    });
-
-    await subscriber.subscribe(responseChannel);
-    await enqueueRunJob({
-      language,
-      sourceCode,
-      responseChannel,
-    });
-
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutRef = setTimeout(() => {
-        reject(new Error("Run request timed out waiting for judge-worker response"));
-      }, 35_000);
-    });
-
-    const result = await Promise.race([waitForResultPromise, timeoutPromise]);
-
-    if (result.ok === false) {
-      throw new AppError(result.error, 502, "RUN_EXECUTION_FAILED");
-    }
-
+    const result = await Promise.race([runPromise, timeoutPromise]);
     return {
-      runId: result.runId,
       stdout: result.stdout,
       stderr: result.stderr,
       compileOutput: result.compileOutput,
@@ -151,10 +59,15 @@ export const runCode = async (data: RunCodeSchemaType) => {
       memory: result.memory,
       executionTime: result.executionTime,
     };
+  } catch (err) {
+    if (err instanceof AppError) {
+      throw err;
+    }
+    const message = err instanceof Error ? err.message : "Run execution failed";
+    throw new AppError(message, 502, "RUN_EXECUTION_FAILED");
   } finally {
     if (timeoutRef) {
       clearTimeout(timeoutRef);
     }
-    await subscriber.quit();
   }
 };

@@ -16,7 +16,7 @@ import {
   ContestAttempt,
 } from "../schema/submission.schema";
 import { LanguageEnum, type Language } from "../schema/language.schema";
-import { enqueueJudgeJob } from "../lib/judgeQueue";
+import { enqueueSubmitJob } from "../jobs/submitQueue";
 import type { BoilerplateSignature } from "../util/boilerplate/types";
 import type { SerializedTestCase } from "../util/boilerplate";
 import { Contest, ContestType, Role } from "@prisma/client";
@@ -249,7 +249,7 @@ export const submitDsa = async (
 
   const signature = problem.signature as unknown as BoilerplateSignature;
 
-  await enqueueJudgeJob({
+  enqueueSubmitJob({
     dsaSubmissionId: submission.id,
     attemptId: attempt.id,
     userId,

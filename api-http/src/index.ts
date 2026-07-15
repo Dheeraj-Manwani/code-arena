@@ -1,4 +1,5 @@
 import { env } from "./config/env"; // validates environment at startup — must be imported first
+import http from "http";
 import express from "express";
 import cors from "cors";
 import bodyParser from "body-parser";
@@ -14,8 +15,11 @@ import statsRoutes from "./routes/stats.routes";
 import profileRoutes from "./routes/profile.routes";
 import attemptRoutes from "./routes/attempt.routes";
 import runRoutes from "./routes/run.routes";
-import internalRoutes from "./routes/internal.routes";
 import { errorHandler } from "./middleware/error-handler";
+import { attachRealtime } from "./realtime/server";
+import { reconcilePendingSubmissions } from "./jobs/reconcile";
+import { submitPool } from "./jobs/pool";
+import { logger } from "./lib/logger";
 
 const app = express();
 app.get("/health", (_, res) => res.send("ok"));
@@ -49,7 +53,32 @@ app.use("/api/stats", statsRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/attempts", attemptRoutes);
 app.use("/api/run", runRoutes);
-app.use("/api/internal", internalRoutes);
 
 app.use(errorHandler);
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+// Economy Service (Phase 4): one HTTP server shared by REST and WebSocket, one
+// port, one process. The judge runs in-process via the pool (jobs/pool.ts) — no
+// Redis, no separate worker/gateway processes.
+const server = http.createServer(app);
+attachRealtime(server);
+
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  // Re-enqueue any submissions left `pending` by a previous crash (Phase 3).
+  reconcilePendingSubmissions().catch((err) =>
+    logger.error({ err: err instanceof Error ? err.message : String(err) }, "Reconciliation failed")
+  );
+});
+
+// Graceful shutdown: stop accepting connections, drain in-flight judging, exit.
+let shuttingDown = false;
+const shutdown = async (signal: string): Promise<void> => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logger.info({ signal }, "Shutting down");
+  server.close();
+  await submitPool.close();
+  process.exit(0);
+};
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+process.on("SIGINT", () => void shutdown("SIGINT"));
