@@ -34,6 +34,7 @@ import ContestLeaderboardPanel from "./ContestLeaderboardPanel";
 import { Loader } from "../Loader";
 import { useAuthStore } from "@/stores/auth.store";
 import { contestWebSocket } from "@/lib/websocket";
+import { paths } from "@/lib/paths";
 
 const LEAVE_MESSAGE =
   "Are you sure you want to leave? Your progress may be lost.";
@@ -233,6 +234,11 @@ const ContestPageInner = ({ contestId, attemptId }: ContestPageInnerProps) => {
   useEffect(() => {
     contestWebSocket.connect(contestId);
     const unsubscribe = contestWebSocket.onSubmissionResult((event) => {
+      // The socket now also carries practice verdicts on the user room (§4.2);
+      // this page only cares about this contest's results.
+      if (event.scope !== "contest") {
+        return;
+      }
       if (event.contestId !== contestId || authUserId == null || event.userId !== authUserId) {
         return;
       }
@@ -261,7 +267,7 @@ const ContestPageInner = ({ contestId, attemptId }: ContestPageInnerProps) => {
       toast.error("Attempt not found");
       allowNavigationRef.current = true;
       resetStore();
-      navigate(`/contest/${contestId}/details`);
+      navigate(paths.contest(contestId));
     }
   }, [isError, contestId, navigate, resetStore]);
 
@@ -270,7 +276,7 @@ const ContestPageInner = ({ contestId, attemptId }: ContestPageInnerProps) => {
       toast.error("Contest not found");
       allowNavigationRef.current = true;
       resetStore();
-      navigate("/dashboard");
+      navigate(paths.contests);
     }
   }, [isLoading, contestData, contestId, isError, navigate, resetStore]);
 
@@ -284,7 +290,7 @@ const ContestPageInner = ({ contestId, attemptId }: ContestPageInnerProps) => {
     }
     allowNavigationRef.current = true;
     resetStore();
-    navigate(`/results/${contestAttemptData.id}`, { replace: true });
+    navigate(paths.submission(contestAttemptData.id), { replace: true });
   }, [
     isLoading,
     contestAttemptData?.id,
@@ -437,7 +443,7 @@ const ContestPageInner = ({ contestId, attemptId }: ContestPageInnerProps) => {
         toast.success("Contest submitted!");
         allowNavigationRef.current = true;
         resetStore();
-        navigate(`/contest/${contestId}/attempt/${attemptId}/leaderboard`);
+        navigate(paths.contestAttemptLeaderboard(contestId, attemptId));
       } else {
         setCurrentQuestionIndex(currentQuestionIndex + 1);
       }
@@ -507,7 +513,7 @@ const ContestPageInner = ({ contestId, attemptId }: ContestPageInnerProps) => {
         toast.success("Contest submitted!");
         allowNavigationRef.current = true;
         resetStore();
-        navigate(`/contest/${contestId}/attempt/${attemptId}/leaderboard`);
+        navigate(paths.contestAttemptLeaderboard(contestId, attemptId));
       } else {
         setCurrentQuestionIndex(currentQuestionIndex + 1);
       }
@@ -523,7 +529,7 @@ const ContestPageInner = ({ contestId, attemptId }: ContestPageInnerProps) => {
       toast.success("Contest submitted!");
       allowNavigationRef.current = true;
       resetStore();
-      navigate(`/results/${attemptId}`);
+      navigate(paths.submission(attemptId));
     } catch {
       toast.error("Unable to submit contest, please try again.");
     }
@@ -543,7 +549,7 @@ const ContestPageInner = ({ contestId, attemptId }: ContestPageInnerProps) => {
     } finally {
       toast("Time's up — your contest has been submitted.");
       resetStore();
-      navigate(`/results/${attemptId}`);
+      navigate(paths.submission(attemptId));
     }
   }, [contestId, attemptId, submitContestMutation, resetStore, navigate]);
 
@@ -565,10 +571,10 @@ const ContestPageInner = ({ contestId, attemptId }: ContestPageInnerProps) => {
             <Button
               onClick={() => {
                 allowNavigationRef.current = true;
-                navigate("/dashboard");
+                navigate(paths.contests);
               }}
             >
-              Back to Dashboard
+              Back to Contests
             </Button>
           </div>
         </div>
@@ -624,7 +630,9 @@ const ContestPageInner = ({ contestId, attemptId }: ContestPageInnerProps) => {
                     onLanguageChange={handleLanguageChange}
                     onSubmit={handleCodingSubmit}
                     isSubmitting={isSubmitting}
-                    isLastQuestion={isLastQuestion}
+                    submitLabel={
+                      isLastQuestion ? "Submit and Finish Contest" : "Submit"
+                    }
                   />
                 ) : null}
               </main>
@@ -676,7 +684,7 @@ const ContestPageInner = ({ contestId, attemptId }: ContestPageInnerProps) => {
                 onLanguageChange={handleLanguageChange}
                 onSubmit={handleCodingSubmit}
                 isSubmitting={isSubmitting}
-                isLastQuestion={isLastQuestion}
+                submitLabel={isLastQuestion ? "Submit and Finish Contest" : "Submit"}
               />
             ) : null}
           </main>
@@ -711,7 +719,7 @@ const ContestPage = () => {
   const attemptId = attId ? Number(attId) : undefined;
 
   if (!contestId || Number.isNaN(contestId) || !attemptId || Number.isNaN(attemptId)) {
-    return <Navigate to="/contests" replace />;
+    return <Navigate to={paths.contests} replace />;
   }
 
   return <ContestPageInner contestId={contestId} attemptId={attemptId} />;

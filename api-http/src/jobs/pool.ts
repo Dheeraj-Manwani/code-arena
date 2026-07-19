@@ -1,8 +1,8 @@
-import type { JudgeJob } from "../schema/job.schema";
+import { targetSubmissionId, type JudgeJob } from "../schema/job.schema";
 import { WORKER_CONCURRENCY, JUDGE_RATE_MAX, JUDGE_RATE_WINDOW_MS } from "./constants";
 import { processSubmitJob } from "./submitProcessor";
 import { isTransientError } from "../judge/errors";
-import { applySubmissionResult } from "../service/submissionResult.service";
+import { applyJobResult } from "../service/submissionResult.service";
 import { logger } from "../lib/logger";
 
 /**
@@ -20,6 +20,11 @@ import { logger } from "../lib/logger";
  *
  * Durability lives in the DB, not the queue: a crash leaves the row `pending`,
  * which jobs/reconcile.ts re-enqueues on the next boot.
+ *
+ * Contest work outranks practice work (PRACTICE_MODE_AND_NAVIGATION.md §4.3).
+ * Practice load is unbounded and continuous while contest load is bounded and
+ * time-critical, and both share this one pool — so a practice backlog must never
+ * push a contest verdict behind it. See `nextItem` for the starvation tradeoff.
  */
 const MAX_ATTEMPTS = 3;
 const BACKOFF_BASE_MS = 2000;
@@ -29,8 +34,11 @@ interface QueueItem {
   attempt: number;
 }
 
-class SubmitPool {
-  private readonly queue: QueueItem[] = [];
+/** Exported for tests; the process uses the `submitPool` singleton below. */
+export class SubmitPool {
+  /** Contest jobs. Always drained before `practiceQueue`. */
+  private readonly contestQueue: QueueItem[] = [];
+  private readonly practiceQueue: QueueItem[] = [];
   private active = 0;
   private tokens = JUDGE_RATE_MAX;
   private closed = false;
@@ -47,26 +55,52 @@ class SubmitPool {
 
   /** Number of jobs queued or in flight (used by graceful shutdown / tests). */
   get inFlight(): number {
-    return this.active + this.queue.length;
+    return this.active + this.contestQueue.length + this.practiceQueue.length;
+  }
+
+  /** Queue depth by kind — for tests and diagnostics. */
+  get queueDepth(): { contest: number; practice: number } {
+    return {
+      contest: this.contestQueue.length,
+      practice: this.practiceQueue.length,
+    };
+  }
+
+  private queueFor(job: JudgeJob): QueueItem[] {
+    return job.target.kind === "contest" ? this.contestQueue : this.practiceQueue;
   }
 
   enqueue(job: JudgeJob): void {
     if (this.closed) {
-      logger.warn({ dsaSubmissionId: job.dsaSubmissionId }, "Pool closed — job left pending for reconcile");
+      logger.warn(
+        { kind: job.target.kind, submissionId: targetSubmissionId(job.target) },
+        "Pool closed — job left pending for reconcile",
+      );
       return;
     }
-    this.queue.push({ job, attempt: 1 });
+    this.queueFor(job).push({ job, attempt: 1 });
     this.drain();
   }
 
+  /**
+   * Strict priority: a queued contest job always goes first.
+   *
+   * This can starve practice under sustained contest load, and that is the
+   * intended tradeoff — a contest has a deadline and a ranking riding on its
+   * verdicts, practice does not. Starvation is bounded in practice because a
+   * contest is a finite event; if that stops being true, this is where a
+   * reserved practice slice would go.
+   */
+  private nextItem(): QueueItem | undefined {
+    return this.contestQueue.shift() ?? this.practiceQueue.shift();
+  }
+
   private drain(): void {
-    while (
-      !this.closed &&
-      this.active < this.concurrency &&
-      this.tokens > 0 &&
-      this.queue.length > 0
-    ) {
-      const item = this.queue.shift()!;
+    while (!this.closed && this.active < this.concurrency && this.tokens > 0) {
+      const item = this.nextItem();
+      if (!item) {
+        return;
+      }
       this.tokens--;
       this.active++;
       void this.run(item);
@@ -86,15 +120,18 @@ class SubmitPool {
 
   private async handleFailure(item: QueueItem, err: unknown): Promise<void> {
     const message = err instanceof Error ? err.message : String(err);
+    const submissionId = targetSubmissionId(item.job.target);
+    const kind = item.job.target.kind;
 
     if (isTransientError(err) && item.attempt < MAX_ATTEMPTS) {
       const delay = BACKOFF_BASE_MS * 2 ** (item.attempt - 1);
       logger.warn(
-        { dsaSubmissionId: item.job.dsaSubmissionId, attempt: item.attempt, delay, err: message },
+        { kind, submissionId, attempt: item.attempt, delay, err: message },
         "Transient judge error — retrying with backoff"
       );
       const timer = setTimeout(() => {
-        this.queue.push({ job: item.job, attempt: item.attempt + 1 });
+        // Re-queue by kind so a retried contest job keeps its priority.
+        this.queueFor(item.job).push({ job: item.job, attempt: item.attempt + 1 });
         this.drain();
       }, delay);
       timer.unref();
@@ -103,11 +140,11 @@ class SubmitPool {
 
     // Terminal, or retries exhausted.
     logger.error(
-      { dsaSubmissionId: item.job.dsaSubmissionId, attempt: item.attempt, err: message },
+      { kind, submissionId, attempt: item.attempt, err: message },
       "Judge job failed permanently — recording runtime_error"
     );
     try {
-      await applySubmissionResult(item.job.dsaSubmissionId, {
+      await applyJobResult(item.job.target, {
         status: "runtime_error",
         pointsEarned: 0,
         testCasesPassed: 0,
@@ -118,7 +155,8 @@ class SubmitPool {
       // Leaving it `pending` is safe — the boot reconciler will pick it up.
       logger.error(
         {
-          dsaSubmissionId: item.job.dsaSubmissionId,
+          kind,
+          submissionId,
           err: updateErr instanceof Error ? updateErr.message : String(updateErr),
         },
         "Failed to record terminal verdict — will be reconciled on next boot"

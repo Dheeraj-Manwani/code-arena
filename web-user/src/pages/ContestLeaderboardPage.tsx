@@ -6,6 +6,7 @@ import { useContestAttemptQuery } from "@/queries/contest.queries";
 import ContestLeaderboardPanel from "@/components/contest/ContestLeaderboardPanel";
 import { Loader } from "@/components/Loader";
 import { contestWebSocket } from "@/lib/websocket";
+import { paths } from "@/lib/paths";
 
 const ContestLeaderboardPage = () => {
   const { contestId: conId, attemptId: attId } = useParams();
@@ -26,7 +27,7 @@ const ContestLeaderboardPage = () => {
   }, [contestId]);
 
   if (!contestId || !attemptId) {
-    navigate("/contests", { replace: true });
+    navigate(paths.contests, { replace: true });
     return null;
   }
 
@@ -39,7 +40,7 @@ const ContestLeaderboardPage = () => {
       <div className="h-screen flex items-center justify-center">
         <div className="text-center">
           <p className="text-destructive mb-4">Failed to load leaderboard.</p>
-          <Button onClick={() => navigate("/contests")}>Back to Contests</Button>
+          <Button onClick={() => navigate(paths.contests)}>Back to Contests</Button>
         </div>
       </div>
     );
@@ -59,7 +60,7 @@ const ContestLeaderboardPage = () => {
           </div>
           <Button
             variant="outline"
-            onClick={() => navigate(`/results/${attemptId}`)}
+            onClick={() => navigate(paths.submission(attemptId))}
             className="gap-2"
           >
             View Results

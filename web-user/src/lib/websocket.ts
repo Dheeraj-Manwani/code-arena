@@ -1,18 +1,39 @@
 import { useAuthStore } from "@/stores/auth.store";
 
+export type Verdict =
+  | "accepted"
+  | "wrong_answer"
+  | "time_limit_exceeded"
+  | "runtime_error";
+
+interface SubmissionResultBase {
+  type: "SUBMISSION_RESULT";
+  userId: number;
+  status: Verdict;
+  testCasesPassed: number;
+  totalTestCases: number;
+}
+
+export interface ContestSubmissionResult extends SubmissionResultBase {
+  scope: "contest";
+  dsaSubmissionId: number;
+  attemptId: number;
+  contestId: number;
+  pointsEarned: number;
+}
+
+/** Practice verdicts arrive over the user room — there is no contestId (§4.2). */
+export interface PracticeSubmissionResult extends SubmissionResultBase {
+  scope: "practice";
+  practiceSubmissionId: number;
+  problemId: number;
+}
+
+export type SubmissionResultData = ContestSubmissionResult | PracticeSubmissionResult;
+
 export interface SubmissionResultEvent {
   type: "SUBMISSION_RESULT";
-  data: {
-    type: "SUBMISSION_RESULT";
-    dsaSubmissionId: number;
-    attemptId: number;
-    userId: number;
-    contestId: number;
-    status: "accepted" | "wrong_answer" | "time_limit_exceeded" | "runtime_error";
-    pointsEarned: number;
-    testCasesPassed: number;
-    totalTestCases: number;
-  };
+  data: SubmissionResultData;
 }
 
 /** Anonymised "the leaderboard changed" signal — carries no per-user data (§8.1/§1.1). */
@@ -48,8 +69,12 @@ class ContestWebSocketClient {
   private manuallyDisconnected = false;
   private status: ConnectionStatus = "offline";
 
-  connect(contestId: number): void {
-    this.contestId = contestId;
+  /**
+   * Open the socket. Pass a `contestId` to also join that contest's room; omit
+   * it for practice, which only needs the user room the server joins on auth.
+   */
+  connect(contestId?: number): void {
+    this.contestId = contestId ?? null;
     this.manuallyDisconnected = false;
     this.reconnectAttempts = 0;
     this.openSocket();
@@ -101,7 +126,7 @@ class ContestWebSocketClient {
   }
 
   private openSocket(): void {
-    if (this.socket || this.contestId == null) {
+    if (this.socket) {
       return;
     }
 
@@ -116,7 +141,7 @@ class ContestWebSocketClient {
     this.socket.onopen = () => {
       this.reconnectAttempts = 0;
       const token = useAuthStore.getState().accessToken;
-      if (!token || this.contestId == null || !this.socket) {
+      if (!token || !this.socket) {
         this.socket?.close();
         return;
       }
@@ -124,7 +149,9 @@ class ContestWebSocketClient {
         JSON.stringify({
           type: "AUTH",
           token,
-          contestId: this.contestId,
+          // Omitted entirely for practice — the server treats a present-but-not
+          // -numeric contestId as a malformed frame.
+          ...(this.contestId != null && { contestId: this.contestId }),
         })
       );
       this.setStatus("connected");

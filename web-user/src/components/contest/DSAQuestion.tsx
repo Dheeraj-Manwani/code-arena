@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import Editor from "@monaco-editor/react";
-import type { TestCaseUI, ContestDsa } from "@/schema/problem.schema";
+import type { TestCaseUI, SolveProblem } from "@/schema/problem.schema";
 import { LANGUAGE_CONFIG, type Language } from "@/schema/language.schema";
 import { Button } from "@/components/ui/button";
 import { Play, Send, Loader2, FileText, Terminal, AlertTriangle, Zap, BookOpen, Award, Clock, Database, Tag, Copy, Check } from "lucide-react";
@@ -45,14 +45,15 @@ function formatTestCaseInput(
 }
 
 interface CodingQuestionProps {
-  question: ContestDsa;
+  question: SolveProblem;
   code: string;
   language: Language;
   onCodeChange: (code: string) => void;
   onLanguageChange: (language: Language, boilerplate?: string) => void;
   onSubmit: () => void;
   isSubmitting?: boolean;
-  isLastQuestion?: boolean;
+  /** Submit button text. Contest and practice word this differently. */
+  submitLabel?: string;
 }
 
 const DSAQuestion = ({
@@ -63,7 +64,7 @@ const DSAQuestion = ({
   onLanguageChange,
   onSubmit,
   isSubmitting = false,
-  isLastQuestion = false,
+  submitLabel = "Submit",
 }: CodingQuestionProps) => {
   const [customTestCases, setCustomTestCases] = useState<TestCaseUI[]>([]);
   const [testResults, setTestResults] = useState<TestCaseResult[]>([]);
@@ -165,13 +166,15 @@ const DSAQuestion = ({
     }
   };
 
+  // The API sends lowercase difficulties ("easy"), so matching on "Easy" here
+  // meant every badge fell through to the grey default.
   const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case "Easy":
+    switch (difficulty.toLowerCase()) {
+      case "easy":
         return "text-arena-success bg-arena-success/20 border-arena-success/30";
-      case "Medium":
+      case "medium":
         return "text-arena-warning bg-arena-warning/20 border-arena-warning/30";
-      case "Hard":
+      case "hard":
         return "text-destructive bg-destructive/20 border-destructive/30";
       default:
         return "text-muted-foreground bg-muted border-border";
@@ -199,7 +202,7 @@ const DSAQuestion = ({
                 <div className="flex flex-wrap items-center gap-2 mb-2">
                   {question.difficulty && (
                     <span
-                      className={`px-2.5 py-1 text-xs font-semibold rounded-md border ${getDifficultyColor(
+                      className={`px-2.5 py-1 text-xs font-semibold rounded-md border capitalize ${getDifficultyColor(
                         question.difficulty
                       )}`}
                     >
@@ -447,7 +450,7 @@ const DSAQuestion = ({
                         ) : (
                           <Send className="h-4 w-4 mr-2" />
                         )}
-                        {isLastQuestion ? "Submit and Finish Contest" : "Submit"}
+                        {submitLabel}
                       </Button>
                     </div>
                   </div>

@@ -5,6 +5,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import CountdownTimer from "@/components/common/CountdownTimer";
 import type { ContestWithDates } from "@/schema/contest.schema";
+import { paths } from "@/lib/paths";
 
 const formatDuration = (ms: number) => {
   const h = Math.floor(ms / (1000 * 60 * 60));
@@ -74,7 +75,7 @@ export const FeaturedContest = ({ contest }: FeaturedContestProps) => {
         <Button
           size="lg"
           className="bg-primary hover:bg-primary/90"
-          onClick={() => navigate(`/contest/${contest.id}/details`)}
+          onClick={() => navigate(paths.contest(contest.id))}
         >
           <Play className="w-5 h-5 mr-2" />
           Enter Contest

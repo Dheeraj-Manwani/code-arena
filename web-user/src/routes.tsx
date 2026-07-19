@@ -1,12 +1,19 @@
-import { createBrowserRouter, Navigate, } from "react-router-dom";
-import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { createBrowserRouter, Navigate } from "react-router-dom";
+import { AuthRoute } from "./components/AuthRoute";
+import { LegacyRedirect } from "./components/LegacyRedirect";
+import { AppLayout } from "./components/layouts/AppLayout";
+import { FocusLayout } from "./components/layouts/FocusLayout";
+import { RouteErrorBoundary } from "./components/RouteErrorBoundary";
+import { paths, routePatterns } from "./lib/paths";
 import Dashboard from "@/pages/Dashboard";
 import Contests from "@/pages/Contests";
+import Problems from "@/pages/Problems";
+import ProblemDetails from "@/pages/ProblemDetails";
+import ProblemSolve from "@/pages/ProblemSolve";
 import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
 import ForgotPassword from "@/pages/ForgotPassword";
 import NotFound from "@/pages/NotFound";
-import { AuthRoute } from "./components/AuthRoute";
 import ContestDetails from "./pages/ContestDetails";
 import ContestPage from "./components/contest/ContestPage";
 import MyContests from "./pages/MyContests";
@@ -14,76 +21,84 @@ import Leaderboard from "./pages/Leaderboard";
 import Profile from "./pages/Profile";
 import ContestResultsPage from "./pages/ContestResultsPage";
 import ContestLeaderboardPage from "./pages/ContestLeaderboardPage";
-import { RouteErrorBoundary } from "./components/RouteErrorBoundary";
 
 export const router = createBrowserRouter([
   {
     element: <AuthRoute />,
     errorElement: <RouteErrorBoundary />,
     children: [
+      { path: paths.login, element: <Login /> },
+      { path: paths.signup, element: <Signup /> },
+      { path: paths.forgotPassword, element: <ForgotPassword /> },
+    ],
+  },
+
+  // Authenticated pages with app chrome.
+  {
+    element: <AppLayout />,
+    errorElement: <RouteErrorBoundary />,
+    children: [
+      { path: "/", element: <Navigate to={paths.problems} replace /> },
+
+      { path: paths.problems, element: <Problems /> },
+      { path: routePatterns.problem, element: <ProblemDetails /> },
+
+      { path: paths.dashboard, element: <Dashboard /> },
+      { path: paths.contests, element: <Contests /> },
+      { path: routePatterns.contest, element: <ContestDetails /> },
+      { path: routePatterns.contestLeaderboard, element: <Leaderboard /> },
+
+      { path: paths.myContests, element: <MyContests /> },
+      { path: paths.profile, element: <Profile /> },
+      { path: routePatterns.submission, element: <ContestResultsPage /> },
+    ],
+  },
+
+  // Authenticated full-screen surfaces (no navbar).
+  {
+    element: <FocusLayout />,
+    errorElement: <RouteErrorBoundary />,
+    children: [
+      { path: routePatterns.problemSolve, element: <ProblemSolve /> },
+      { path: routePatterns.contestAttempt, element: <ContestPage /> },
       {
-        path: "/login",
-        element: <Login />,
-      },
-      {
-        path: "/signup",
-        element: <Signup />,
-      },
-      {
-        path: "/forgot-password",
-        element: <ForgotPassword />,
+        path: routePatterns.contestAttemptLeaderboard,
+        element: <ContestLeaderboardPage />,
       },
     ],
   },
 
+  // Legacy paths. Kept so links already shared or bookmarked keep resolving.
   {
-    element: <ProtectedRoute />,
-    errorElement: <RouteErrorBoundary />,
-    children: [
-      {
-        path: "/",
-        element: <Navigate to="/dashboard" replace />,
-      },
-      {
-        path: "/dashboard",
-        element: <Dashboard />,
-      },
-      {
-        path: "/contests",
-        element: <Contests />,
-      },
-      {
-        path: "/contest/:id/details",
-        element: <ContestDetails />,
-      },
-      {
-        path: "/contest/:contestId/attempt/:attemptId",
-        element: <ContestPage />,
-      },
-      {
-        path: "/contest/:contestId/attempt/:attemptId/leaderboard",
-        element: <ContestLeaderboardPage />,
-      },
-      {
-        path: "/my-contests",
-        element: <MyContests />,
-      },
-      {
-        path: "/leaderboard/:contestId?",
-        element: <Leaderboard />,
-      },
-      {
-        path: "/profile",
-        element: <Profile />,
-      },
-      {
-        path: "/results/:attemptId",
-        element: <ContestResultsPage />,
-      },
-    ],
+    path: "/contest/:contestId/details",
+    element: <LegacyRedirect to={(p) => paths.contest(p.contestId)} />,
   },
   {
-    path: "*",
-    element: <NotFound />,
+    path: "/contest/:contestId/attempt/:attemptId",
+    element: (
+      <LegacyRedirect to={(p) => paths.contestAttempt(p.contestId, p.attemptId)} />
+    ),
   },
+  {
+    path: "/contest/:contestId/attempt/:attemptId/leaderboard",
+    element: (
+      <LegacyRedirect
+        to={(p) => paths.contestAttemptLeaderboard(p.contestId, p.attemptId)}
+      />
+    ),
+  },
+  { path: "/my-contests", element: <Navigate to={paths.myContests} replace /> },
+  {
+    path: "/results/:attemptId",
+    element: <LegacyRedirect to={(p) => paths.submission(p.attemptId)} />,
+  },
+  {
+    path: "/leaderboard/:contestId",
+    element: <LegacyRedirect to={(p) => paths.contestLeaderboard(p.contestId)} />,
+  },
+  // `/leaderboard` with no contest had no page of its own — it rendered the same
+  // component with an undefined param. Send it to the contest list.
+  { path: "/leaderboard", element: <Navigate to={paths.contests} replace /> },
+
+  { path: "*", element: <NotFound /> },
 ]);

@@ -8,17 +8,42 @@ import { EventEmitter } from "events";
  * `submission_result` and the realtime module (subscribed below) broadcasts it
  * over WebSocket. No Redis publisher/subscriber involved.
  */
-export interface SubmissionResultEvent {
+type Verdict = "accepted" | "wrong_answer" | "time_limit_exceeded" | "runtime_error";
+
+interface SubmissionResultBase {
   type: "SUBMISSION_RESULT";
-  dsaSubmissionId: number;
-  attemptId: number;
   userId: number;
-  contestId: number;
-  status: "accepted" | "wrong_answer" | "time_limit_exceeded" | "runtime_error";
-  pointsEarned: number;
+  status: Verdict;
   testCasesPassed: number;
   totalTestCases: number;
 }
+
+/**
+ * A contest verdict. Fans out to the contest room: the full result to the
+ * submitter's own sockets, an anonymised LEADERBOARD_UPDATE to everyone else.
+ */
+export interface ContestSubmissionResultEvent extends SubmissionResultBase {
+  scope: "contest";
+  dsaSubmissionId: number;
+  attemptId: number;
+  contestId: number;
+  pointsEarned: number;
+}
+
+/**
+ * A practice verdict. There is no contest room to fan out to — it goes to the
+ * submitting user's own sockets and nowhere else (§4.2). Practice is unscored,
+ * so there is no `pointsEarned` and no leaderboard signal.
+ */
+export interface PracticeSubmissionResultEvent extends SubmissionResultBase {
+  scope: "practice";
+  practiceSubmissionId: number;
+  problemId: number;
+}
+
+export type SubmissionResultEvent =
+  | ContestSubmissionResultEvent
+  | PracticeSubmissionResultEvent;
 
 interface BusEvents {
   submission_result: (event: SubmissionResultEvent) => void;

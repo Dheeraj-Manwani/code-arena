@@ -8,6 +8,8 @@ import { toast } from "react-hot-toast";
 import { Eye, EyeOff } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { pageVariants } from "@/lib/animations";
+import { paths } from "@/lib/paths";
+import GoogleSignInButton from "@/components/auth/GoogleSignInButton";
 import {
   useSignUpMutation,
   useVerifyOtpMutation,
@@ -76,7 +78,7 @@ const Signup = () => {
       verifyOtp(validatedData, {
         onSuccess: () => {
           toast.success("Account created successfully!");
-          navigate("/dashboard");
+          navigate(paths.problems);
         },
       });
     } catch (error) {
@@ -314,9 +316,19 @@ const Signup = () => {
                   </Button>
                 </form>
 
+                <div className="my-6 flex items-center gap-3">
+                  <span className="h-px flex-1 bg-border" />
+                  <span className="text-xs uppercase text-muted-foreground">or</span>
+                  <span className="h-px flex-1 bg-border" />
+                </div>
+
+                {/* Google verifies the address for us, so this path skips the
+                    OTP step entirely. */}
+                <GoogleSignInButton label="Sign up with Google" />
+
                 <div className="mt-6 text-center text-sm text-muted-foreground">
                   Already have an account?{" "}
-                  <Link to="/login" className="text-primary hover:underline">
+                  <Link to={paths.login} className="text-primary hover:underline">
                     Log in
                   </Link>
                 </div>

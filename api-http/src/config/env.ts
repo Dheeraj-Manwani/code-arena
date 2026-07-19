@@ -29,6 +29,16 @@ const envSchema = z.object({
   RESEND_API_KEY: z.string().optional(), // required for OTP/reset emails in production
   DIRECT_URL: z.string().optional(),
 
+  // Google OAuth. Optional as a group: unset means the feature is simply off and
+  // /api/auth/google returns 501 — deployments that don't use Google sign-in must
+  // still boot. `isGoogleOAuthConfigured` below is the single check for "is it on".
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  /** Must match the redirect URI registered in the Google Cloud console exactly. */
+  GOOGLE_CALLBACK_URL: z.string().optional(),
+  /** Where the callback sends the browser once the refresh cookie is set. */
+  FRONTEND_URL: z.string().default("http://localhost:5173"),
+
   // In-process judge tuning knobs (Economy Service Phase 6).
   WORKER_CONCURRENCY: z.coerce.number().int().positive().default(4), // parallel judgings
   JUDGE_RATE_MAX: z.coerce.number().int().positive().default(10), // Judge0 calls per window
@@ -51,3 +61,30 @@ if (!parsed.success) {
 }
 
 export const env: Env = parsed.data;
+
+/**
+ * Google sign-in is on only when the whole trio is present.
+ *
+ * A partial config is a deployment mistake, not a valid state — half-configured
+ * OAuth would fail at the redirect with an opaque Google error, so surface it at
+ * boot instead.
+ */
+export const isGoogleOAuthConfigured = Boolean(
+  env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.GOOGLE_CALLBACK_URL,
+);
+
+const googleVarsSet = [
+  env.GOOGLE_CLIENT_ID,
+  env.GOOGLE_CLIENT_SECRET,
+  env.GOOGLE_CALLBACK_URL,
+].filter(Boolean).length;
+
+if (googleVarsSet > 0 && googleVarsSet < 3) {
+  // eslint-disable-next-line no-console
+  console.error(
+    "\n[api-http] Invalid environment configuration:\n" +
+      "  - Google OAuth is partially configured. Set all of GOOGLE_CLIENT_ID,\n" +
+      "    GOOGLE_CLIENT_SECRET and GOOGLE_CALLBACK_URL, or none of them.\n",
+  );
+  process.exit(1);
+}

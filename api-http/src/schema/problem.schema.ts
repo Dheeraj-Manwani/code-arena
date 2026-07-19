@@ -3,6 +3,69 @@ import { z } from "zod";
 export const DifficultyEnum = z.enum(["easy", "medium", "hard"]);
 export type Difficulty = z.infer<typeof DifficultyEnum>;
 
+export const ProblemVisibilityEnum = z.enum(["draft", "public", "contest_only"]);
+export type ProblemVisibility = z.infer<typeof ProblemVisibilityEnum>;
+
+export const ProblemSortEnum = z.enum([
+  "newest",
+  "oldest",
+  "difficulty-asc",
+  "difficulty-desc",
+  "title",
+  "acceptance-asc",
+  "acceptance-desc",
+  "most-solved",
+]);
+export type ProblemSort = z.infer<typeof ProblemSortEnum>;
+
+/** Catalogue status filter — the caller's own standing on each problem. */
+export const ProblemStatusFilterEnum = z.enum(["solved", "attempted", "todo"]);
+export type ProblemStatusFilter = z.infer<typeof ProblemStatusFilterEnum>;
+
+/** Catalogue page size cap — an unbounded `limit` is a trivial DoS. */
+export const MAX_CATALOGUE_LIMIT = 50;
+
+/** Query for the public practice catalogue (`GET /api/problems`). */
+export const GetProblemsSchema = z.object({
+  page: z
+    .string()
+    .optional()
+    .transform((v) => parseInt(v ?? "1", 10))
+    .pipe(z.number().int().min(1))
+    .default(1),
+
+  limit: z
+    .string()
+    .optional()
+    .transform((v) => parseInt(v ?? "20", 10))
+    .pipe(z.number().int().min(1).max(MAX_CATALOGUE_LIMIT))
+    .default(20),
+
+  search: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim() || undefined),
+
+  difficulty: DifficultyEnum.optional(),
+
+  /** Repeatable `?tags=dp&tags=graph`, or a single comma-separated value. */
+  tags: z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .transform((v) => {
+      if (v == null) return undefined;
+      const list = (Array.isArray(v) ? v : v.split(","))
+        .map((tag) => tag.trim())
+        .filter(Boolean);
+      return list.length > 0 ? list : undefined;
+    }),
+
+  status: ProblemStatusFilterEnum.optional(),
+
+  sortBy: ProblemSortEnum.default("newest"),
+});
+export type GetProblemsQuery = z.infer<typeof GetProblemsSchema>;
+
 /** Max test cases a single DSA problem may carry — bounds harness/source size (issues.md §3.4). */
 export const MAX_TEST_CASES_PER_PROBLEM = 100;
 

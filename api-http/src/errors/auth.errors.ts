@@ -62,6 +62,53 @@ export class RefreshTokenNotFoundError extends AppError {
   }
 }
 
+/**
+ * The account exists but has no password — it was created through Google, so
+ * there is nothing to compare against.
+ *
+ * Naming the provider is deliberate: without it the user gets "invalid
+ * credentials" for a password they never set and has no way to recover. It
+ * reveals no more than the existing `UserNotFoundError` already does (which
+ * discloses account existence), and it is what the identity providers
+ * themselves do in this situation.
+ */
+export class PasswordLoginUnavailableError extends AppError {
+  constructor() {
+    super(
+      "This account uses Google sign-in. Continue with Google instead.",
+      409,
+      "PASSWORD_LOGIN_UNAVAILABLE"
+    );
+  }
+}
+
+/**
+ * Google returned a profile whose email it has not itself verified. Trusting it
+ * would let anyone who can create an unverified Google account on someone
+ * else's address take over that account.
+ */
+export class GoogleEmailUnverifiedError extends AppError {
+  constructor() {
+    super(
+      "Your Google account's email is not verified.",
+      403,
+      "GOOGLE_EMAIL_UNVERIFIED"
+    );
+  }
+}
+
+export class OAuthStateInvalidError extends AppError {
+  constructor() {
+    super("Sign-in request expired or invalid. Please try again.", 403, "OAUTH_STATE_INVALID");
+  }
+}
+
+export class OAuthNotConfiguredError extends AppError {
+  constructor() {
+    super("Google sign-in is not configured.", 501, "OAUTH_NOT_CONFIGURED");
+  }
+}
+
 export class UserNotVerifiedError extends AppError {
   constructor() {
     super(

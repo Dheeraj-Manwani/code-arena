@@ -7,6 +7,7 @@ import StatusBadge from '@/components/common/StatusBadge';
 import EmptyState from '@/components/common/EmptyState';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAttemptsQuery } from '@/queries/attempt.queries';
+import { paths } from '@/lib/paths';
 import {
   Trophy, Clock, Calendar, Play, Eye,
   LayoutList
@@ -199,7 +200,7 @@ const MyContests = () => {
                           <Button
                             onClick={() =>
                               navigate(
-                                `/contest/${attempt.contestId}/attempt/${attempt.id}`,
+                                paths.contestAttempt(attempt.contestId, attempt.id),
                               )
                             }
                             className="gap-2"
@@ -210,7 +211,7 @@ const MyContests = () => {
                         ) : (
                           <Button
                             variant="outline"
-                            onClick={() => navigate(`/results/${attempt.id}`)}
+                            onClick={() => navigate(paths.submission(attempt.id))}
                             className="gap-2"
                           >
                             <Eye className="w-4 h-4" />

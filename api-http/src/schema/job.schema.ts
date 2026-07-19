@@ -1,33 +1,40 @@
-import { z } from "zod";
+/**
+ * Where a judge verdict lands.
+ *
+ * Contest and practice submissions share the judge pipeline but live in
+ * different tables (PRACTICE_MODE_AND_NAVIGATION.md §4.1). This is a
+ * discriminated union rather than a bag of optional ids so the compiler forces
+ * every consumer to say which case it is handling — a job can't silently be
+ * "contest with a missing contestId".
+ */
+export type JudgeTarget =
+  | {
+      kind: "contest";
+      dsaSubmissionId: number;
+      attemptId: number;
+      contestId: number;
+    }
+  | {
+      kind: "practice";
+      practiceSubmissionId: number;
+    };
+
+/** The submission row id, whichever table it lives in — for logging. */
+export function targetSubmissionId(target: JudgeTarget): number {
+  return target.kind === "contest"
+    ? target.dsaSubmissionId
+    : target.practiceSubmissionId;
+}
 
 export interface JudgeJob {
   jobId: string;
-  dsaSubmissionId: number;
-  attemptId: number;
+  target: JudgeTarget;
   userId: number;
   problemId: number;
-  contestId: number;
   language: "cpp" | "python" | "javascript" | "java";
   sourceCode: string;
   totalTestCases: number;
   totalPoints: number;
-}
-
-export const judgeJobSchema = z.object({
-  jobId: z.string(),
-  dsaSubmissionId: z.number(),
-  attemptId: z.number(),
-  userId: z.number(),
-  problemId: z.number(),
-  contestId: z.number(),
-  language: z.enum(["cpp", "python", "javascript", "java"]),
-  sourceCode: z.string(),
-  totalTestCases: z.number(),
-  totalPoints: z.number(),
-});
-
-export function parseJob(data: unknown): JudgeJob {
-  return judgeJobSchema.parse(data);
 }
 
 export interface UpdateSubmissionPayload {

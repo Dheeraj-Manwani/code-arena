@@ -2,6 +2,7 @@ import NotFound from "@/pages/NotFound";
 import { AlertTriangle, Bug, Home } from "lucide-react";
 import { isRouteErrorResponse, useRouteError } from "react-router-dom";
 import { Button } from "./ui/button";
+import { paths } from "@/lib/paths";
 
 export function RouteErrorBoundary() {
     const error = useRouteError();
@@ -50,7 +51,7 @@ export function RouteErrorBoundary() {
                         <Button
                             variant="outline"
                             size="lg"
-                            onClick={() => (window.location.href = "/dashboard")}
+                            onClick={() => (window.location.href = paths.problems)}
                         >
                             <Home className="mr-2 size-4" />
                             Go to Dashboard
@@ -104,7 +105,7 @@ export function RouteErrorBoundary() {
                     <Button
                         variant="outline"
                         size="lg"
-                        onClick={() => (window.location.href = "/dashboard")}
+                        onClick={() => (window.location.href = paths.problems)}
                     >
                         <Home className="mr-2 size-4" />
                         Go to Dashboard

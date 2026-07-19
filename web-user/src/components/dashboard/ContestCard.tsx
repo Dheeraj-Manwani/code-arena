@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { ContestWithDates } from "@/schema/contest.schema";
+import { paths } from "@/lib/paths";
 import StatusBadge from "@/components/common/StatusBadge";
 import CountdownTimer from "@/components/common/CountdownTimer";
 import {
@@ -68,11 +69,11 @@ const ContestCard = ({ contest, className, hasAttempt = false, ctaSize = "defaul
 
 
   const handleViewDetails = () => {
-    navigate(`/contest/${contest.id}/details`);
+    navigate(paths.contest(contest.id));
   };
 
   const handleViewResults = () => {
-    navigate(`/leaderboard/${contest.id}`);
+    navigate(paths.contestLeaderboard(contest.id));
   };
 
   // ---- A. Header: Status (left) | Type (right) ----

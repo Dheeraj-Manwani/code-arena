@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useLeaderboardQuery } from '@/queries/leaderboard.queries';
 import { useContestQuery } from '@/queries/contest.queries';
 import { useAuthStore } from '@/stores/auth.store';
+import { paths } from '@/lib/paths';
 import type { LeaderboardEntry, LeaderboardEntryApi } from '@/schema/leaderboard.schema';
 import {
   Trophy, Medal, Clock, Search, ChevronLeft, ChevronRight,
@@ -103,8 +104,8 @@ const Leaderboard = () => {
         <div className="mb-4">
           <AppBreadcrumb
             items={[
-              { label: "Contests", href: "/dashboard" },
-              ...(contestData ? [{ label: contestData.title, href: `/contest/${contestId}/details` }] : []),
+              { label: "Contests", href: paths.contests },
+              ...(contestData ? [{ label: contestData.title, href: paths.contest(contestId!) }] : []),
               { label: "Leaderboard" },
             ]}
           />

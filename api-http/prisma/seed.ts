@@ -1,5 +1,6 @@
 import { Difficulty, PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
+import { slugify } from "../src/util/slug";
 
 const prisma = new PrismaClient();
 
@@ -492,14 +493,20 @@ async function main() {
       const dsa = await prisma.dsaProblem.create({
         data: {
           title: `${t.title} – C${contest.id}`,
+          // `${contest.id}-${j}` is unique across the seed, so no collisions.
+          slug: `${slugify(t.title)}-c${contest.id}-${j}`,
           description: t.description,
           tags: t.tags,
           points: t.points,
           timeLimit: t.timeLimit,
           memoryLimit: t.memoryLimit,
           difficulty: t.difficulty as Difficulty,
+          // Contest copies stay out of the practice catalogue; the standalone
+          // pool below is what /problems lists.
+          visibility: "contest_only",
           signature: t.signature as object,
           creatorId,
+          stat: { create: {} },
         },
       });
       for (const tc of t.testCases) {
@@ -516,10 +523,50 @@ async function main() {
     if ((i + 1) % 8 === 0) console.log(`  Created ${i + 1}/${contestCount} contests`);
   }
 
+  // --- 4. Standalone practice catalogue ---
+  // Public, linked to no contest — this is what GET /api/problems serves.
+  console.log(`Creating ${dsaProblems.length} standalone practice problems...`);
+
+  for (const t of dsaProblems) {
+    const slug = slugify(t.title);
+
+    const existing = await prisma.dsaProblem.findUnique({ where: { slug } });
+    if (existing) continue;
+
+    const dsa = await prisma.dsaProblem.create({
+      data: {
+        title: t.title,
+        slug,
+        description: t.description,
+        tags: t.tags,
+        points: t.points,
+        timeLimit: t.timeLimit,
+        memoryLimit: t.memoryLimit,
+        difficulty: t.difficulty as Difficulty,
+        visibility: "public",
+        signature: t.signature as object,
+        creatorId,
+        stat: { create: {} },
+      },
+    });
+
+    for (const tc of t.testCases) {
+      await prisma.testCase.create({
+        data: {
+          problemId: dsa.id,
+          input: tc.input,
+          expectedOutput: tc.expectedOutput,
+          isHidden: tc.isHidden,
+        },
+      });
+    }
+  }
+
   console.log("🎉 Seed completed.");
   console.log("  • Practice: startTime/endTime=null, maxDurationMs set (1h or 2h)");
   console.log("  • Competitive: maxDurationMs=null, start/end set; dates aligned with status (draft/scheduled/running/ended/cancelled)");
   console.log("  • 2 draft contests have 0 questions; others have 2–4 MCQs and 2–4 DSAs");
+  console.log(`  • ${dsaProblems.length} standalone public problems for /problems (contest copies are contest_only)`);
   console.log("  • Logins: creator@example.com / contestee@example.com — password: password123");
 }
 

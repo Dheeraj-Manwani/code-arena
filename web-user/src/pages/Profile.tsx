@@ -8,6 +8,7 @@ import StatusBadge from '@/components/common/StatusBadge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useProfileQuery } from '@/queries/profile.queries';
 import { useLogoutMutation } from '@/queries/auth.mutations';
+import { paths } from '@/lib/paths';
 import {
   Trophy, Target, Medal, Calendar, Clock,
   TrendingUp, Code, BarChart3, LogOut
@@ -256,7 +257,7 @@ const Profile = () => {
                   <Clock className="w-5 h-5 text-primary" />
                   Recent Activity
                 </CardTitle>
-                <Link to="/my-contests">
+                <Link to={paths.myContests}>
                   <Button variant="ghost" size="sm">View All</Button>
                 </Link>
               </CardHeader>

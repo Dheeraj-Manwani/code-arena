@@ -17,16 +17,17 @@ import { Loader } from '@/components/Loader';
 import EnterContestDialog from '@/components/common/EnterContestDialog';
 import type { ContestWithQuestions } from '@/schema/contest.schema';
 import { useContestAttempt } from '@/queries/contest.mutations';
+import { paths } from '@/lib/paths';
 
 const ContestDetails = () => {
-  const { id } = useParams();
+  const { contestId: contestIdParam } = useParams();
   const navigate = useNavigate();
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
-  const contestId = id ? parseInt(id) : undefined;
+  const contestId = contestIdParam ? parseInt(contestIdParam) : undefined;
 
   if (!contestId) {
-    return <Navigate to="/contests" replace />;
+    return <Navigate to={paths.contests} replace />;
   }
 
   const { data: contestData, isLoading } = useContestQuery(contestId, true);
@@ -44,7 +45,7 @@ const ContestDetails = () => {
         <div className="text-center">
           <h2 className="text-2xl font-bold text-foreground mb-2">Contest Not Found</h2>
           <p className="text-muted-foreground mb-4">The contest you're looking for doesn't exist.</p>
-          <Button onClick={() => navigate('/dashboard')}>Back to Dashboard</Button>
+          <Button onClick={() => navigate(paths.contests)}>Back to Contests</Button>
         </div>
       </div>
     );
@@ -122,7 +123,7 @@ const ContestDetails = () => {
     createAttempt(contestId, {
       onSuccess: (data) => {
         if (data.success) {
-          navigate(`/contest/${contestId}/attempt/${data.data.attemptId}`)
+          navigate(paths.contestAttempt(contestId, data.data.attemptId))
           toast.success('Contest started! Good luck!')
         }
       }, onError: () => toast.error('Failed to start contest')
@@ -154,7 +155,7 @@ const ContestDetails = () => {
         <div className="mb-4">
           <AppBreadcrumb
             items={[
-              { label: "Contests", href: "/dashboard" },
+              { label: "Contests", href: paths.contests },
               { label: contestData.title },
             ]}
           />
@@ -318,7 +319,7 @@ const ContestDetails = () => {
                   <Button
                     variant="outline"
                     className="w-full mt-3"
-                    onClick={() => navigate(`/leaderboard/${contestId}`)}
+                    onClick={() => navigate(paths.contestLeaderboard(contestId))}
                   >
                     View Leaderboard
                     <ArrowRight className="w-4 h-4 ml-2" />

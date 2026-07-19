@@ -2,22 +2,25 @@ import { childLogger } from "../lib/logger";
 import { submitToJudge0 } from "../judge/submit";
 import { pollForVerdict } from "../judge/poll";
 import { deriveVerdict } from "../judge/parse";
-import { applySubmissionResult } from "../service/submissionResult.service";
-import type { JudgeJob } from "../schema/job.schema";
+import { applyJobResult } from "../service/submissionResult.service";
+import { targetSubmissionId, type JudgeJob } from "../schema/job.schema";
 
 /**
  * Submit pipeline: Judge0 submit → poll → derive verdict → persist + broadcast.
  *
- * Economy Service Phase 3: this now takes a plain `JudgeJob` (built in-process,
- * already typed — no Zod re-parse of untrusted Redis data) and is driven by the
- * in-process pool (jobs/pool.ts). It throws on failure; the pool classifies the
- * error (transient → retry with backoff, terminal → record a failed verdict).
+ * Economy Service Phase 3: this takes a plain `JudgeJob` (built in-process,
+ * already typed) and is driven by the in-process pool (jobs/pool.ts). It throws
+ * on failure; the pool classifies the error (transient → retry with backoff,
+ * terminal → record a failed verdict).
+ *
+ * The pipeline is identical for contest and practice work — only where the
+ * verdict lands differs, which `applyJobResult` routes on `job.target`.
  */
 export async function processSubmitJob(job: JudgeJob): Promise<void> {
   const log = childLogger({
     jobId: job.jobId,
-    dsaSubmissionId: job.dsaSubmissionId,
-    attemptId: job.attemptId,
+    kind: job.target.kind,
+    submissionId: targetSubmissionId(job.target),
   });
 
   log.info("Processing job started");
@@ -39,7 +42,7 @@ export async function processSubmitJob(job: JudgeJob): Promise<void> {
     "Final verdict"
   );
 
-  await applySubmissionResult(job.dsaSubmissionId, {
+  await applyJobResult(job.target, {
     status,
     pointsEarned,
     testCasesPassed,

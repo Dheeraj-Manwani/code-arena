@@ -16,6 +16,60 @@ export const getUserFromId = async (id: number) => {
   });
 };
 
+export const getUserFromGoogleId = async (googleId: string) => {
+  return await prisma.user.findUnique({
+    where: { googleId },
+  });
+};
+
+/**
+ * A new account created from a Google profile.
+ *
+ * `password: null` — there is nothing to hash — and `isVerified: true`, because
+ * Google has already proven the user controls the address. The caller must have
+ * checked `email_verified` first.
+ */
+export const createGoogleUser = async (data: {
+  name: string;
+  email: string;
+  googleId: string;
+  imageUrl?: string | null;
+}) => {
+  return await prisma.user.create({
+    data: {
+      name: data.name,
+      email: data.email,
+      googleId: data.googleId,
+      imageUrl: data.imageUrl ?? null,
+      password: null,
+      role: "contestee",
+      isVerified: true,
+    },
+  });
+};
+
+/**
+ * Attach a Google identity to an existing account.
+ *
+ * Also flips `isVerified`: reaching here means Google vouched for the address,
+ * which is the same proof our OTP flow was after. Any existing password is left
+ * untouched, so the user keeps both sign-in methods.
+ */
+export const linkGoogleToUser = async (
+  userId: number,
+  data: { googleId: string; imageUrl?: string | null },
+) => {
+  return await prisma.user.update({
+    where: { id: userId },
+    data: {
+      googleId: data.googleId,
+      isVerified: true,
+      // Never clobber an existing avatar with an empty Google one.
+      ...(data.imageUrl ? { imageUrl: data.imageUrl } : {}),
+    },
+  });
+};
+
 export const createUser = async (data: {
   name: string;
   email: string;

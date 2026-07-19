@@ -250,11 +250,14 @@ export const submitDsa = async (
   const signature = problem.signature as unknown as BoilerplateSignature;
 
   enqueueSubmitJob({
-    dsaSubmissionId: submission.id,
-    attemptId: attempt.id,
+    target: {
+      kind: "contest",
+      dsaSubmissionId: submission.id,
+      attemptId: attempt.id,
+      contestId,
+    },
     userId,
     problemId: dsaId,
-    contestId,
     language: language as Language,
     userCode: code,
     signature,

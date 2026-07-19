@@ -3,16 +3,30 @@ import { AuthRequest } from "../types/express.d";
 import * as problemService from "../service/problem.service";
 import { sendSuccess } from "../util/response";
 import { ProblemNotFoundError } from "../errors/problem.errors";
-import { AddMcqSchema, AddDsaSchema, UpdateMcqSchema, UpdateDsaSchema } from "../schema/problem.schema";
+import { AddMcqSchema, AddDsaSchema, UpdateMcqSchema, UpdateDsaSchema, GetProblemsSchema } from "../schema/problem.schema";
 import { generateUserBoilerplate, toStoredSignature } from "../util/boilerplate";
 import type { BoilerplateSignature } from "../util/boilerplate";
 
-export const getProblemById = async (req: AuthRequest, res: Response) => {
-  const problemId = parseInt(String(req.params.problemId));
-  if (isNaN(problemId)) {
+/** GET /api/problems — the public practice catalogue. */
+export const getPracticeProblems = async (req: AuthRequest, res: Response) => {
+  const query = GetProblemsSchema.parse(req.query);
+  const result = await problemService.getPracticeProblems(query, req.userId);
+  return sendSuccess(res, result, 200);
+};
+
+/** GET /api/problems/tags — distinct tags, for the catalogue filter. */
+export const getPracticeTags = async (_req: AuthRequest, res: Response) => {
+  const tags = await problemService.getPracticeTags();
+  return sendSuccess(res, tags, 200);
+};
+
+/** GET /api/problems/:slug — a single practiceable problem. */
+export const getPracticeProblemBySlug = async (req: AuthRequest, res: Response) => {
+  const slug = String(req.params.slug ?? "").trim();
+  if (!slug) {
     throw new ProblemNotFoundError();
   }
-  const problem = await problemService.getProblemById(problemId);
+  const problem = await problemService.getPracticeProblemBySlug(slug, req.userId);
   return sendSuccess(res, problem, 200);
 };
 

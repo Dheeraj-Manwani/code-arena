@@ -8,6 +8,7 @@ import {
   ForgotPasswordSchema,
   ResetPasswordSchema,
 } from "../schema/auth.schema";
+import { clearRefreshCookie, setRefreshCookie } from "../util/authCookies";
 
 export const refreshAuth = async (req: Request, res: Response) => {
   const { user, accessToken } = await authService.refreshAccessToken(
@@ -44,7 +45,7 @@ export const loginUser = async (req: Request, res: Response) => {
 };
 
 export const logout = (_req: Request, res: Response) => {
-  res.clearCookie("refreshToken", { path: "/api/auth/refresh" });
+  clearRefreshCookie(res);
   return sendSuccess(res, { message: "Logged out" });
 };
 
@@ -59,13 +60,3 @@ export const resetPassword = async (req: Request, res: Response) => {
   await authService.resetPassword(data);
   return sendSuccess(res, { message: "Password reset successfully" }, 200);
 };
-
-function setRefreshCookie(res: Response, token: string) {
-  res.cookie("refreshToken", token, {
-    path: "/api/auth/refresh",
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
-}

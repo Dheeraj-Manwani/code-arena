@@ -19,6 +19,15 @@ const errorMessages = {
   [ApiErrorCode.USER_NOT_FOUND]: "User not found.",
   [ApiErrorCode.USER_NOT_VERIFIED]:
     "Your email is not verified. Please verify your email to continue.",
+  [ApiErrorCode.PASSWORD_LOGIN_UNAVAILABLE]:
+    "This account uses Google sign-in. Use “Continue with Google” instead.",
+  [ApiErrorCode.GOOGLE_EMAIL_UNVERIFIED]:
+    "Your Google account's email address isn't verified, so we can't sign you in with it.",
+  [ApiErrorCode.OAUTH_STATE_INVALID]:
+    "That sign-in link expired. Please try signing in again.",
+  [ApiErrorCode.OAUTH_NOT_CONFIGURED]:
+    "Google sign-in isn't available right now.",
+  [ApiErrorCode.OAUTH_FAILED]: "Google sign-in failed. Please try again.",
   [ApiErrorCode.CONTEST_NOT_FOUND]: "Contest not found.",
   [ApiErrorCode.CONTEST_NOT_ACTIVE]:
     "This contest is not currently active. Please check the contest schedule.",
@@ -38,6 +47,8 @@ const errorMessages = {
 
   // Error not required
   [ApiErrorCode.REFRESH_TOKEN_NOT_FOUND]: undefined,
+  // The user chose to back out at Google's consent screen — not a failure.
+  [ApiErrorCode.OAUTH_CANCELLED]: undefined,
 };
 
 export const getErrorMessage = (

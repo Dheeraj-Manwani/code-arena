@@ -1,6 +1,7 @@
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 import { AlertTriangle, RefreshCw, Home, Bug } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { paths } from "@/lib/paths";
 
 function ErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
   const isDev = import.meta.env.DEV;
@@ -64,7 +65,7 @@ function ErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
           <Button
             variant="outline"
             size="lg"
-            onClick={() => (window.location.href = "/dashboard")}
+            onClick={() => (window.location.href = paths.problems)}
             className="w-full sm:w-auto"
           >
             <Home className="mr-2 size-4" />

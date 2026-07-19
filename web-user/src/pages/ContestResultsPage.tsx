@@ -5,6 +5,7 @@ import { ArrowRight } from "lucide-react";
 import { Loader } from "@/components/Loader";
 import ResultsPage from "@/components/contest/ResultsPage";
 import { useAttemptResultsQuery } from "@/queries/attempt.queries";
+import { paths } from "@/lib/paths";
 
 const ContestResultsPage = () => {
   const { attemptId: attIdParam } = useParams();
@@ -30,7 +31,7 @@ const ContestResultsPage = () => {
                 <p className="text-muted-foreground mb-6">
                   We couldn&apos;t load the results for this attempt.
                 </p>
-                <Button onClick={() => navigate("/my-contests")} className="gap-2">
+                <Button onClick={() => navigate(paths.myContests)} className="gap-2">
                   Back to My Contests
                   <ArrowRight className="w-4 h-4" />
                 </Button>
@@ -45,8 +46,8 @@ const ContestResultsPage = () => {
   return (
     <ResultsPage
       results={results}
-      onBackToContests={() => navigate("/my-contests")}
-      onViewLeaderboard={() => navigate(`/leaderboard/${results.contestId}`)}
+      onBackToContests={() => navigate(paths.myContests)}
+      onViewLeaderboard={() => navigate(paths.contestLeaderboard(results.contestId))}
     />
   );
 };

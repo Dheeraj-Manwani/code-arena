@@ -1,11 +1,16 @@
 import WebSocket from "ws";
-import { getRoomClients } from "./rooms";
+import { getRoomClients, getUserClients } from "./rooms";
 import { getClientState } from "./clients";
+import type {
+  ContestSubmissionResultEvent,
+  PracticeSubmissionResultEvent,
+  SubmissionResultEvent,
+} from "./bus";
 
-interface SubmissionResultPayload {
-  type: "SUBMISSION_RESULT";
-  contestId: number;
-  userId: number;
+function sendIfOpen(ws: WebSocket, message: unknown): void {
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(message));
+  }
 }
 
 /**
@@ -18,23 +23,41 @@ interface SubmissionResultPayload {
  * Ported unchanged from realtime-gateway; now driven by the in-process bus
  * (see realtime/server.ts) instead of a Redis subscription.
  */
-export function publishSubmissionResult(payload: SubmissionResultPayload): void {
-  const clients = getRoomClients(payload.contestId);
-  for (const ws of clients) {
+function publishContestResult(event: ContestSubmissionResultEvent): void {
+  for (const ws of getRoomClients(event.contestId)) {
     if (ws.readyState !== WebSocket.OPEN) {
       continue;
     }
 
     const state = getClientState(ws);
-    if (state && state.userId === payload.userId) {
-      ws.send(JSON.stringify({ type: "SUBMISSION_RESULT", data: payload }));
+    if (state && state.userId === event.userId) {
+      sendIfOpen(ws, { type: "SUBMISSION_RESULT", data: event });
     }
 
-    ws.send(
-      JSON.stringify({
-        type: "LEADERBOARD_UPDATE",
-        data: { contestId: payload.contestId },
-      })
-    );
+    sendIfOpen(ws, {
+      type: "LEADERBOARD_UPDATE",
+      data: { contestId: event.contestId },
+    });
   }
+}
+
+/**
+ * A practice verdict goes to the submitter's own sockets and nowhere else
+ * (PRACTICE_MODE_AND_NAVIGATION.md §4.2).
+ *
+ * No contest room to broadcast into and no LEADERBOARD_UPDATE: practice is
+ * unscored, so there is no ranking for anyone to refetch.
+ */
+function publishPracticeResult(event: PracticeSubmissionResultEvent): void {
+  for (const ws of getUserClients(event.userId)) {
+    sendIfOpen(ws, { type: "SUBMISSION_RESULT", data: event });
+  }
+}
+
+export function publishSubmissionResult(event: SubmissionResultEvent): void {
+  if (event.scope === "contest") {
+    publishContestResult(event);
+    return;
+  }
+  publishPracticeResult(event);
 }

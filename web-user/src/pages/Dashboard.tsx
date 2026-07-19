@@ -7,6 +7,7 @@ import { FeaturedContest } from "@/components/dashboard/FeaturedContest";
 import { useDashboardFeedQuery } from "@/queries/dashboard.queries";
 import { Trophy, BookOpen, ArrowRight } from "lucide-react";
 import { mapApiContestToContest } from "@/mappers/contest.mapper";
+import { paths } from "@/lib/paths";
 
 const Dashboard = () => {
 
@@ -38,7 +39,7 @@ const Dashboard = () => {
                 Live & Upcoming
               </h2>
             </div>
-            <Link to="/contests">
+            <Link to={paths.contests}>
               <Button variant="ghost" size="sm" className="gap-2">
                 View All Contests
                 <ArrowRight className="w-4 h-4" />
@@ -72,7 +73,7 @@ const Dashboard = () => {
                 Practice Contests
               </h2>
             </div>
-            <Link to="/contests">
+            <Link to={paths.contests}>
               <Button variant="ghost" size="sm" className="gap-2">
                 View All Contests
                 <ArrowRight className="w-4 h-4" />

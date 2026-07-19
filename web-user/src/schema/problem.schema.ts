@@ -84,6 +84,31 @@ export interface TestCaseResult {
   actualOutput: string;
 }
 
+/**
+ * The problem shape the solve surface (`DSAQuestion`) actually renders.
+ *
+ * Narrower than `ContestDsa` on purpose: a practice problem has no `order`,
+ * `creatorId`, or `updatedAt`, and shouldn't have to invent them to reuse the
+ * editor. `ContestDsa` satisfies this structurally, so the contest flow passes
+ * its existing payload unchanged.
+ */
+export interface SolveProblem {
+  id: number;
+  title: string;
+  description: string;
+  difficulty?: Difficulty | null;
+  tags?: string[];
+  points?: number;
+  timeLimit?: number;
+  memoryLimit?: number;
+  inputFormat?: string | null;
+  outputFormat?: string | null;
+  constraints: string[];
+  testCases: TestCaseUI[];
+  /** Drives the /api/run harness. */
+  signature?: unknown;
+}
+
 export interface ContestMcq extends McqQuestion {
   order: number;
   type: "mcq";

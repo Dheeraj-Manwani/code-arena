@@ -7,6 +7,9 @@ import { Eye, EyeOff } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { pageVariants } from "@/lib/animations";
 import { useLoginMutation } from "@/queries/auth.mutations";
+import GoogleSignInButton from "@/components/auth/GoogleSignInButton";
+import { useOAuthError } from "@/hooks/use-oauth-error";
+import { paths } from "@/lib/paths";
 
 const Login = () => {
   const [formData, setFormData] = useState({
@@ -15,6 +18,9 @@ const Login = () => {
   });
   const { mutate: login, isPending: isLoading } = useLoginMutation();
   const [showPassword, setShowPassword] = useState(false);
+
+  // The OAuth callback redirects failures back here as ?error=CODE.
+  useOAuthError();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -131,9 +137,17 @@ const Login = () => {
                 </Button>
               </form>
 
+              <div className="my-6 flex items-center gap-3">
+                <span className="h-px flex-1 bg-border" />
+                <span className="text-xs uppercase text-muted-foreground">or</span>
+                <span className="h-px flex-1 bg-border" />
+              </div>
+
+              <GoogleSignInButton />
+
               <div className="mt-6 text-center text-sm text-muted-foreground">
                 Don't have an account?{" "}
-                <Link to="/signup" className="text-primary hover:underline">
+                <Link to={paths.signup} className="text-primary hover:underline">
                   Sign up
                 </Link>
               </div>

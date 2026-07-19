@@ -10,12 +10,14 @@ import contestRoutes from "./routes/contest.routes";
 import dashboardRoutes from "./routes/dashboard.routes";
 import submissionRoutes from "./routes/submission.routes";
 import problemRoutes from "./routes/problem.routes";
+import practiceRoutes from "./routes/practice.routes";
 import leaderboardRoutes from "./routes/leaderboard.routes";
 import statsRoutes from "./routes/stats.routes";
 import profileRoutes from "./routes/profile.routes";
 import attemptRoutes from "./routes/attempt.routes";
 import runRoutes from "./routes/run.routes";
 import { errorHandler } from "./middleware/error-handler";
+import { configurePassport, passport } from "./auth/passport";
 import { attachRealtime } from "./realtime/server";
 import { reconcilePendingSubmissions } from "./jobs/reconcile";
 import { submitPool } from "./jobs/pool";
@@ -43,11 +45,17 @@ app
   .use(bodyParser.json({ limit: "10kb" }))
   .use(bodyParser.urlencoded({ extended: true, limit: "20kb" }));
 
+// Passport runs the Google handshake only — no `passport.session()`, because
+// this process is session-free and mints its own JWTs (see auth/passport.ts).
+configurePassport();
+app.use(passport.initialize());
+
 app.use("/api/auth", authRoutes);
 app.use("/api/contests", contestRoutes);
 app.use("/api", dashboardRoutes);
 app.use("/api", submissionRoutes);
 app.use("/api/problems", problemRoutes);
+app.use("/api/practice", practiceRoutes);
 app.use("/api/contests", leaderboardRoutes);
 app.use("/api/stats", statsRoutes);
 app.use("/api/profile", profileRoutes);

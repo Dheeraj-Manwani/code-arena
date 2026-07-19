@@ -10,6 +10,7 @@ import {
   InvalidOtpError,
   InvalidTokenError,
   OtpLockedError,
+  PasswordLoginUnavailableError,
   RefreshTokenNotFoundError,
   TooManyOtpRequestsError,
   UserNotFoundError,
@@ -147,6 +148,13 @@ export const loginUser = async ({ email, password }: LoginInput) => {
     throw new UserNotVerifiedError();
   }
 
+  // A Google-only account has no password. Reject explicitly rather than
+  // comparing against a coerced empty string — that would work by accident and
+  // would tell the user their (nonexistent) password is wrong.
+  if (user.password === null) {
+    throw new PasswordLoginUnavailableError();
+  }
+
   const isPasswordValid = await bcrypt.compare(password, user.password);
   if (!isPasswordValid) {
     throw new InvalidCredentialsError();
@@ -157,6 +165,21 @@ export const loginUser = async ({ email, password }: LoginInput) => {
   const refreshToken = signRefreshToken(sessionUser);
 
   return { user: sessionUser, accessToken, refreshToken };
+};
+
+/**
+ * Mint a session for a user we have already authenticated by other means (the
+ * Google callback). Deliberately takes a `User` and not credentials — nothing
+ * here decides *whether* to trust the caller, only how to express that trust.
+ */
+export const issueSessionFor = (user: User) => {
+  const sessionUser = toSessionUser(user);
+
+  return {
+    user: sessionUser,
+    accessToken: signAccessToken(sessionUser),
+    refreshToken: signRefreshToken(sessionUser),
+  };
 };
 
 function signAccessToken(user: SessionUser) {

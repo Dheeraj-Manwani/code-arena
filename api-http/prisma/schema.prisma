@@ -45,11 +45,38 @@ enum AttemptStatus {
   abandoned
 }
 
+/// Whether a problem is offered in the standalone practice catalogue.
+/// `contest_only` problems are usable inside a contest but never listed for
+/// practice. Note this is necessary but not sufficient: a `public` problem is
+/// still withheld while it sits in a live or upcoming competitive contest —
+/// see problem.service#isPracticeable.
+enum ProblemVisibility {
+  draft
+  public
+  contest_only
+}
+
+/// A user's standing on a problem. `solved` is terminal — once solved, a later
+/// wrong answer must not demote it back to `attempted`.
+enum SolveStatus {
+  attempted
+  solved
+}
+
 model User {
-  id         Int     @id @default(autoincrement())
-  name       String
-  email      String  @unique
-  password   String
+  id    Int    @id @default(autoincrement())
+  name  String
+  email String @unique
+
+  /// Null for accounts that only ever signed in with Google — there is no
+  /// password to hash. Any password comparison must treat null as "this account
+  /// has no password login", never as a failed compare.
+  password String?
+
+  /// Google's stable subject id (`profile.id`). Unique so one Google account
+  /// cannot be linked to two users.
+  googleId String? @unique
+
   isVerified Boolean @default(false)
   imageUrl   String?
   role       Role    @default(contestee)
@@ -57,13 +84,16 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  contests       Contest[]            @relation("ContestCreator")
-  mcqQuestions   McqQuestion[]
-  dsaProblems    DsaProblem[]
-  attempts       ContestAttempt[]
-  mcqSubmissions McqSubmission[]
-  dsaSubmissions DsaSubmission[]
-  leaderboard    ContestLeaderboard[]
+  contests            Contest[]            @relation("ContestCreator")
+  mcqQuestions        McqQuestion[]
+  dsaProblems         DsaProblem[]
+  attempts            ContestAttempt[]
+  mcqSubmissions      McqSubmission[]
+  dsaSubmissions      DsaSubmission[]
+  practiceSubmissions PracticeSubmission[]
+  practiceDrafts      PracticeDraft[]
+  problemStatuses     UserProblemStatus[]
+  leaderboard         ContestLeaderboard[]
 
   @@index([role])
   @@map("users")
@@ -145,14 +175,18 @@ model McqQuestion {
 
 model DsaProblem {
   id          Int      @id @default(autoincrement())
+  slug        String   @unique
   title       String
   description String
   tags        String[] @default([])
 
-  points        Int         @default(100)
-  timeLimit     Int         @default(2000)
-  memoryLimit   Int         @default(256)
-  difficulty    Difficulty?
+  points      Int        @default(100)
+  timeLimit   Int        @default(2000)
+  memoryLimit Int        @default(256)
+  // Non-null so every problem lands in a difficulty filter bucket.
+  difficulty  Difficulty @default(medium)
+
+  visibility    ProblemVisibility @default(draft)
   maxDurationMs Int?
 
   signature    Json
@@ -166,10 +200,22 @@ model DsaProblem {
   creatorId Int
   createdBy User @relation(fields: [creatorId], references: [id])
 
-  testCases    TestCase[]
-  submissions  DsaSubmission[]
-  contestLinks ContestQuestion[]
+  testCases           TestCase[]
+  submissions         DsaSubmission[]
+  practiceSubmissions PracticeSubmission[]
+  practiceDrafts      PracticeDraft[]
+  contestLinks        ContestQuestion[]
+  stat                ProblemStat?
+  userStatuses        UserProblemStatus[]
 
+  @@index([visibility, difficulty])
+  @@index([visibility, createdAt])
+  // GIN index so tag filtering (`tags hasSome [...]`) is not a sequential scan.
+  @@index([tags], type: Gin)
+  // Trigram index so catalogue search (`title ILIKE '%q%'`) can use an index —
+  // a plain b-tree can't serve a leading-wildcard match. Needs the pg_trgm
+  // extension, created in the accompanying migration.
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin)
   @@map("dsa_problems")
 }
 
@@ -258,6 +304,85 @@ model DsaSubmission {
   @@map("dsa_submissions")
 }
 
+/// Denormalised per-problem counters backing the catalogue's acceptance-rate
+/// sort (PRACTICE_MODE_AND_NAVIGATION.md §4.5).
+///
+/// Computing these live would mean a COUNT over every submission per row per
+/// page load. They're maintained on each verdict instead (stats.service.ts).
+/// Exactly one row per DsaProblem — the row is created with the problem and
+/// backfilled for pre-existing ones, so the catalogue's `orderBy` never has to
+/// deal with a null relation.
+model ProblemStat {
+  problemId Int @id
+
+  totalSubmissions    Int @default(0)
+  acceptedSubmissions Int @default(0)
+  /// Distinct users who have solved it at least once.
+  solvedBy            Int @default(0)
+
+  /// acceptedSubmissions / totalSubmissions, 0 when there are no submissions.
+  /// Stored rather than computed because Prisma cannot `orderBy` an expression.
+  acceptanceRate Float @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  problem DsaProblem @relation(fields: [problemId], references: [id])
+
+  @@map("problem_stats")
+}
+
+/// A user's solved/attempted standing on a problem, for the catalogue's status
+/// filter (§4.5). Counts submissions from both contests and practice: solving a
+/// problem in a contest means you have solved it.
+model UserProblemStatus {
+  userId    Int
+  problemId Int
+
+  status   SolveStatus
+  solvedAt DateTime?
+
+  firstAttemptedAt DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user    User       @relation(fields: [userId], references: [id])
+  problem DsaProblem @relation(fields: [problemId], references: [id])
+
+  @@id([userId, problemId])
+  @@index([userId, status])
+  @@map("user_problem_status")
+}
+
+/// A standalone practice submission — no contest, no attempt, no score.
+///
+/// Deliberately a separate table from `DsaSubmission` rather than nullable
+/// contest/attempt FKs (PRACTICE_MODE_AND_NAVIGATION.md §4.1): the two share the
+/// judge *pipeline* but not their *invariants*. A contest submission is scored,
+/// deadline-bound and ranked; a practice submission is none of those. Keeping
+/// them apart means the contest tables keep their NOT NULL guarantees and no
+/// contest aggregate has to learn to exclude practice rows.
+model PracticeSubmission {
+  id              Int              @id @default(autoincrement())
+  code            String
+  language        String
+  status          SubmissionStatus
+  testCasesPassed Int              @default(0)
+  totalTestCases  Int              @default(0)
+  executionTime   Int?
+  submittedAt     DateTime         @default(now())
+
+  userId    Int
+  problemId Int
+
+  user    User       @relation(fields: [userId], references: [id])
+  problem DsaProblem @relation(fields: [problemId], references: [id])
+
+  // Submission history for a user on one problem (the detail page's list).
+  @@index([userId, problemId, submittedAt])
+  // Boot reconciliation sweeps `status = 'pending'` (jobs/reconcile.ts).
+  @@index([status])
+  @@map("practice_submissions")
+}
+
 model ContestLeaderboard {
   id          Int @id @default(autoincrement())
   contestId   Int
@@ -296,4 +421,27 @@ model DraftAnswer {
   updatedAt DateTime @updatedAt
 
   @@unique([attemptId, problemId])
+}
+
+/// Practice code-in-progress, keyed by (user, problem) since practice has no
+/// attempt to hang a draft off (PRACTICE_MODE_AND_NAVIGATION.md §4.7).
+///
+/// A separate table rather than making `DraftAnswer.attemptId` nullable: Postgres
+/// treats NULLs as distinct, so `@@unique([attemptId, problemId])` would stop
+/// enforcing anything for practice rows and silently allow duplicate drafts.
+model PracticeDraft {
+  id        Int @id @default(autoincrement())
+  userId    Int
+  problemId Int
+
+  code     String
+  language String
+
+  updatedAt DateTime @updatedAt
+
+  user    User       @relation(fields: [userId], references: [id])
+  problem DsaProblem @relation(fields: [problemId], references: [id])
+
+  @@unique([userId, problemId])
+  @@map("practice_drafts")
 }

@@ -1,12 +1,16 @@
 import WebSocket from "ws";
 import { verifyToken } from "./auth";
-import { joinRoom, leaveRoom } from "./rooms";
+import { joinRoom, leaveRoom, joinUserRoom, leaveUserRoom } from "./rooms";
 import { setClientState, getClientState, deleteClientState } from "./clients";
 
 interface AuthHandshakeMessage {
   type: "AUTH";
   token: string;
-  contestId: number;
+  /**
+   * Optional: present when the client is watching a contest. Practice clients
+   * omit it and rely on their user room alone (§4.2).
+   */
+  contestId?: number;
 }
 
 function parseHandshakeMessage(raw: WebSocket.RawData): AuthHandshakeMessage | null {
@@ -18,14 +22,18 @@ function parseHandshakeMessage(raw: WebSocket.RawData): AuthHandshakeMessage | n
     }
 
     const msg = parsed as Record<string, unknown>;
-    if (msg.type !== "AUTH" || typeof msg.token !== "string" || typeof msg.contestId !== "number") {
+    if (msg.type !== "AUTH" || typeof msg.token !== "string") {
+      return null;
+    }
+    // Present-but-not-a-number is a malformed frame, not a practice client.
+    if (msg.contestId !== undefined && typeof msg.contestId !== "number") {
       return null;
     }
 
     return {
       type: "AUTH",
       token: msg.token,
-      contestId: msg.contestId,
+      contestId: msg.contestId as number | undefined,
     };
   } catch {
     return null;
@@ -67,13 +75,20 @@ export function handleConnection(ws: WebSocket): void {
     if (!state) {
       state = { userId: claims.userId, tokenExp: claims.exp, isAlive: true, rooms: new Set() };
       setClientState(ws, state);
+      joinUserRoom(claims.userId, ws);
     } else {
       // Re-auth on an existing socket (e.g. refreshed token) — update the claims.
-      state.userId = claims.userId;
+      // If it authenticated as a different user, move it to that user's room so
+      // it can't keep receiving the previous user's results.
+      if (state.userId !== claims.userId) {
+        leaveUserRoom(state.userId, ws);
+        joinUserRoom(claims.userId, ws);
+        state.userId = claims.userId;
+      }
       state.tokenExp = claims.exp;
     }
 
-    if (!state.rooms.has(message.contestId)) {
+    if (message.contestId !== undefined && !state.rooms.has(message.contestId)) {
       joinRoom(message.contestId, ws);
       state.rooms.add(message.contestId);
     }
@@ -81,7 +96,7 @@ export function handleConnection(ws: WebSocket): void {
     ws.send(
       JSON.stringify({
         type: "CONNECTED",
-        contestId: message.contestId,
+        contestId: message.contestId ?? null,
         userId: claims.userId,
       })
     );
@@ -102,6 +117,7 @@ export function handleConnection(ws: WebSocket): void {
       for (const contestId of state.rooms) {
         leaveRoom(contestId, ws);
       }
+      leaveUserRoom(state.userId, ws);
     }
     deleteClientState(ws);
   });
