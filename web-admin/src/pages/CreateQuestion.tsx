@@ -27,8 +27,9 @@ import { toast } from "react-hot-toast";
 import { cn } from "@/lib/utils";
 import { motion } from "motion/react";
 import { pageVariants } from "@/lib/animations";
-import { AddMcqSchema, AddDsaSchema, type AddMcqType, type AddDsaType } from "@/schema/problem.schema";
+import { AddMcqSchema, AddDsaSchema, type AddMcqType, type AddDsaType, type ProblemVisibility } from "@/schema/problem.schema";
 import { LANGUAGES, LANGUAGE_CONFIG, BOILERPLATE_PLACEHOLDER } from "@/schema/language.schema";
+import { VisibilitySelect } from "@/components/questions/VisibilitySelect";
 
 import {
   useCreateMcqQuestionMutation,
@@ -61,6 +62,7 @@ const CreateQuestion = () => {
     options: ["Option 1", "Option 2", "Option 3", "Option 4"],
     correctOptionIndex: 0,
     maxDurationMs: "",
+    visibility: "draft" as ProblemVisibility,
   });
   const [optionDragIndex, setOptionDragIndex] = useState<number | null>(null);
 
@@ -73,6 +75,7 @@ const CreateQuestion = () => {
     timeLimit: 2000,
     memoryLimit: 256,
     difficulty: "" as "easy" | "medium" | "hard" | "",
+    visibility: "draft" as ProblemVisibility,
     maxDurationMs: "",
     inputFormat: "",
     outputFormat: "",
@@ -219,6 +222,7 @@ const CreateQuestion = () => {
       options: mcqForm.options.filter((opt) => opt.trim()),
       correctOptionIndex: mcqForm.correctOptionIndex,
       points: mcqForm.points,
+      visibility: mcqForm.visibility,
       ...(mcqForm.maxDurationMs &&
         mcqForm.maxDurationMs.trim() !== "" && {
         maxDurationMs: parseInt(mcqForm.maxDurationMs) || undefined,
@@ -270,6 +274,7 @@ const CreateQuestion = () => {
       timeLimit: dsaForm.timeLimit,
       memoryLimit: dsaForm.memoryLimit,
       ...(dsaForm.difficulty && { difficulty: dsaForm.difficulty }),
+      visibility: dsaForm.visibility,
       ...(dsaForm.maxDurationMs &&
         dsaForm.maxDurationMs.trim() !== "" && {
         maxDurationMs: parseInt(dsaForm.maxDurationMs) || undefined,
@@ -383,7 +388,7 @@ const CreateQuestion = () => {
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div>
                     <Label className="arena-label">Points</Label>
                     <Input
@@ -437,6 +442,11 @@ const CreateQuestion = () => {
                       </p>
                     )}
                   </div>
+                  <VisibilitySelect
+                    value={mcqForm.visibility}
+                    onChange={(visibility) => setMcqForm({ ...mcqForm, visibility })}
+                    disabled={isCreatingMcq}
+                  />
                 </div>
 
                 <div>
@@ -605,7 +615,7 @@ const CreateQuestion = () => {
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div>
                     <Label className="arena-label">Tags (comma-separated)</Label>
                     <Input
@@ -659,6 +669,11 @@ const CreateQuestion = () => {
                       </p>
                     )}
                   </div>
+                  <VisibilitySelect
+                    value={dsaForm.visibility}
+                    onChange={(visibility) => setDsaForm({ ...dsaForm, visibility })}
+                    disabled={isCreatingDsa}
+                  />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">

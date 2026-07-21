@@ -1,7 +1,23 @@
+# Which dependencies may run install lifecycle scripts.
+#
+# pnpm 10+ blocks postinstall scripts by default, and its pre-command dependency
+# check exits 1 until every listed package has an explicit decision
+# (ERR_PNPM_IGNORED_BUILDS). `pnpm approve-builds` generates this file with
+# placeholder values; left unfilled, nothing is approved and every pnpm command
+# — including the implicit check before `pnpm dev` — keeps failing.
+#
+# Each `true` below is a package whose postinstall this project actually needs.
 allowBuilds:
-  '@prisma/client': set this to true or false
-  '@prisma/engines': set this to true or false
-  bcrypt: set this to true or false
-  esbuild: set this to true or false
-  msgpackr-extract: set this to true or false
-  prisma: set this to true or false
+  # Generate the Prisma client and fetch the platform query engine. Without
+  # these there is no `@prisma/client` to import.
+  '@prisma/client': true
+  '@prisma/engines': true
+  prisma: true
+  # Builds its native binding. Auth cannot hash a password without it.
+  bcrypt: true
+  # Installs its platform binary; vitest and ts-node-dev depend on it.
+  esbuild: true
+  # An optional native accelerator for msgpack encoding, pulled in
+  # transitively. Declined deliberately rather than left undecided — nothing
+  # here needs the speedup and the library falls back to its pure-JS path.
+  msgpackr-extract: false

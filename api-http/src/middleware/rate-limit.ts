@@ -75,3 +75,28 @@ export const practiceSubmitRateLimiter = rateLimit({
     return `ip:${ipKeyGenerator(req.ip ?? "")}`;
   },
 });
+
+/**
+ * MCQ answering (LEARN_PATHS.md §5.7).
+ *
+ * Not about integrity — learn quizzes are unscored and retries are deliberate,
+ * so a determined user brute-forcing four options learns nothing they couldn't
+ * get by clicking. It exists so a script can't walk an entire path to 100% (or
+ * hammer the endpoint) in a loop.
+ *
+ * Generous on purpose: a learner genuinely working through a lesson of quizzes,
+ * getting some wrong and retrying, must never see a 429.
+ */
+export const learnAnswerRateLimiter = rateLimit({
+  ...baseOptions,
+  windowMs: 60 * 1000,
+  limit: 60,
+  keyGenerator: (req: Request) => {
+    const userId = (req as Request & { userId?: number }).userId;
+    if (userId != null) {
+      return `learn-answer:user:${userId}`;
+    }
+    // Same IPv6 caveat as practiceSubmitRateLimiter — see above.
+    return `learn-answer:ip:${ipKeyGenerator(req.ip ?? "")}`;
+  },
+});

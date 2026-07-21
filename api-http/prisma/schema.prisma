@@ -45,11 +45,18 @@ enum AttemptStatus {
   abandoned
 }
 
-/// Whether a problem is offered in the standalone practice catalogue.
-/// `contest_only` problems are usable inside a contest but never listed for
-/// practice. Note this is necessary but not sufficient: a `public` problem is
-/// still withheld while it sits in a live or upcoming competitive contest —
-/// see problem.service#isPracticeable.
+/// Whether a problem is offered outside a contest.
+///
+/// For `DsaProblem` this gates the standalone practice catalogue; `contest_only`
+/// problems are usable inside a contest but never listed for practice. Note this
+/// is necessary but not sufficient: a `public` problem is still withheld while it
+/// sits in a live or upcoming competitive contest — see
+/// problem.repository#practiceableWhere.
+///
+/// For `McqQuestion` it gates use as a learn question (LEARN_PATHS.md §5.7).
+/// There is no MCQ catalogue, so nothing lists them; the value is read by the
+/// learn path builder, which refuses to publish a path containing a question a
+/// learner is not allowed to see.
 enum ProblemVisibility {
   draft
   public
@@ -61,6 +68,30 @@ enum ProblemVisibility {
 enum SolveStatus {
   attempted
   solved
+}
+
+/// The two things a learn question can be. Redundant with which FK is set, and
+/// deliberately so: it lets the UI order and filter a lesson's questions without
+/// joining two tables. A CHECK constraint keeps the two in agreement — see the
+/// `learn_paths` migration.
+enum LearnQuestionKind {
+  problem
+  mcq
+}
+
+enum LearnPathStatus {
+  draft
+  published
+  archived
+}
+
+/// How a learn question came to be complete. `verified` means the platform saw
+/// it happen — all test cases passed, or the MCQ was answered correctly.
+/// `self_marked` is the user's own claim about work done elsewhere
+/// (LEARN_PATHS.md D3), and is the only kind that can be un-ticked.
+enum CompletionSource {
+  verified
+  self_marked
 }
 
 model User {
@@ -94,6 +125,12 @@ model User {
   practiceDrafts      PracticeDraft[]
   problemStatuses     UserProblemStatus[]
   leaderboard         ContestLeaderboard[]
+
+  learnQuestionProgress UserLearnQuestionProgress[]
+  learnLessonProgress   UserLearnLessonProgress[]
+  learnModuleProgress   UserLearnModuleProgress[]
+  learnPathProgress     UserLearnPathProgress[]
+  learnMcqAttempts      LearnMcqAttempt[]
 
   @@index([role])
   @@map("users")
@@ -161,14 +198,20 @@ model McqQuestion {
   points             Int    @default(1)
   maxDurationMs      Int?
 
+  /// Mirrors `DsaProblem.visibility` so both halves of the question bank answer
+  /// "may a learner see this?" the same way. Defaults to `draft`: a question is
+  /// not exposed outside a contest until someone says so.
+  visibility ProblemVisibility @default(draft)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   creatorId Int
   createdBy User @relation(fields: [creatorId], references: [id])
 
-  contestLinks ContestQuestion[]
-  submissions  McqSubmission[]
+  contestLinks   ContestQuestion[]
+  submissions    McqSubmission[]
+  learnQuestions LearnQuestion[]
 
   @@map("mcq_questions")
 }
@@ -207,6 +250,7 @@ model DsaProblem {
   contestLinks        ContestQuestion[]
   stat                ProblemStat?
   userStatuses        UserProblemStatus[]
+  learnQuestions      LearnQuestion[]
 
   @@index([visibility, difficulty])
   @@index([visibility, createdAt])
@@ -394,6 +438,252 @@ model ContestLeaderboard {
   user    User    @relation(fields: [userId], references: [id])
 
   @@unique([contestId, userId])
+}
+
+// ---------------------------------------------------------------------------
+// Learn paths (LEARN_PATHS.md)
+//
+// Path → Module → Lesson → Question, where a *question* is the only atom that
+// can be completed. Containers are complete when all their children are; there
+// is no reading credit, no participation credit, nothing else that moves a
+// progress bar. That rule is why the numbers on the learn pages can be trusted,
+// so treat it as an invariant rather than a default.
+// ---------------------------------------------------------------------------
+
+/// A curated curriculum. Several can exist and a user picks between them;
+/// enrolment is implicit — a `UserLearnPathProgress` row appears the first time
+/// the path is opened (LEARN_PATHS.md D8, §5.2).
+model LearnPath {
+  id          Int             @id @default(autoincrement())
+  slug        String          @unique
+  title       String
+  description String
+  status      LearnPathStatus @default(draft)
+  order       Int             @default(0)
+  isFeatured  Boolean         @default(false)
+
+  /// Fraction of a module's questions needed before the *next* module stops
+  /// being dimmed (§5.4). Per-path so a short path can demand more. `0` turns
+  /// soft gating off for the whole path without a code change.
+  unlockThreshold Float @default(0.6)
+
+  /// Denormalised totals. The gallery renders one card per path and would
+  /// otherwise count questions across every path on every load. Maintained by
+  /// the admin write path — a stale total here is a wrong denominator, which is
+  /// the trust problem in §5.1 arriving by another route.
+  totalQuestions Int @default(0)
+  totalModules   Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  modules  LearnModule[]
+  progress UserLearnPathProgress[]
+
+  @@index([status, order])
+  @@map("learn_paths")
+}
+
+/// A top-level section ("Binary Search"). The level the full milestone moment
+/// fires on, and the only level soft gating applies to (§3.2).
+model LearnModule {
+  id      Int     @id @default(autoincrement())
+  pathId  Int
+  slug    String
+  title   String
+  summary String?
+  order   Int
+
+  totalQuestions Int @default(0)
+
+  path     LearnPath                 @relation(fields: [pathId], references: [id], onDelete: Cascade)
+  lessons  LearnLesson[]
+  progress UserLearnModuleProgress[]
+
+  @@unique([pathId, slug])
+  @@index([pathId, order])
+  @@map("learn_modules")
+}
+
+/// A group of questions with optional teaching prose ("Search Space").
+///
+/// `body` never gates and never counts (D4) — a lesson is complete when its
+/// questions are, whether or not anyone read a word of it. Rendered through a
+/// sanitising markdown pipeline (§5.8); it is creator-authored but still
+/// untrusted input into every learner's DOM.
+model LearnLesson {
+  id       Int     @id @default(autoincrement())
+  moduleId Int
+  slug     String
+  title    String
+  body     String?
+  order    Int
+
+  totalQuestions Int @default(0)
+
+  module    LearnModule               @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  questions LearnQuestion[]
+  progress  UserLearnLessonProgress[]
+
+  @@unique([moduleId, slug])
+  @@index([moduleId, order])
+  @@map("learn_lessons")
+}
+
+/// The atom. Exactly one of `problemId` / `mcqId` is set, and `kind` agrees with
+/// whichever it is — enforced by a CHECK constraint in the migration, because
+/// two nullable FKs otherwise permit a question that is nothing, a question that
+/// is two things, or a question whose `kind` lies about its target.
+model LearnQuestion {
+  id       Int               @id @default(autoincrement())
+  lessonId Int
+  kind     LearnQuestionKind
+  order    Int
+
+  problemId Int?
+  mcqId     Int?
+
+  /// Optional curator framing ("focus on the invariant, not the code").
+  note String?
+
+  lesson LearnLesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  /// `Restrict`, not Prisma's default `SetNull` for an optional relation.
+  /// SetNull would blank `problemId` while `kind` still said `problem`, which
+  /// the CHECK constraint then rejects — turning "you deleted a problem that a
+  /// path uses" into an opaque constraint violation at an unrelated call site.
+  /// Restrict says so directly, and a problem in a curriculum should not be
+  /// silently deletable anyway.
+  problem DsaProblem?  @relation(fields: [problemId], references: [id], onDelete: Restrict)
+  mcq     McqQuestion? @relation(fields: [mcqId], references: [id], onDelete: Restrict)
+  progress UserLearnQuestionProgress[]
+  attempts LearnMcqAttempt[]
+
+  @@unique([lessonId, problemId])
+  @@unique([lessonId, mcqId])
+  @@index([lessonId, order])
+  /// Drives the verdict fan-out (§5.2): "every learn question referencing this
+  /// problem". A problem may appear in many paths and all of them must tick.
+  @@index([problemId])
+  @@map("learn_questions")
+}
+
+/// Per-question standing. Rows exist only for *completed* questions — absence
+/// means "not started", so a 474-question path costs zero rows until the user
+/// actually does something.
+model UserLearnQuestionProgress {
+  userId     Int
+  questionId Int
+
+  source      CompletionSource
+  completedAt DateTime         @default(now())
+
+  user     User          @relation(fields: [userId], references: [id])
+  question LearnQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, questionId])
+  @@index([userId])
+  @@map("user_learn_question_progress")
+}
+
+model UserLearnLessonProgress {
+  userId   Int
+  lessonId Int
+
+  completedQuestions Int       @default(0)
+  completedAt        DateTime?
+
+  /// Null until the inline lesson milestone has been shown. Server-side rather
+  /// than localStorage so a phone and a laptop don't each celebrate once (§5.5).
+  celebratedAt DateTime?
+
+  updatedAt DateTime @updatedAt
+
+  user   User        @relation(fields: [userId], references: [id])
+  lesson LearnLesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@id([userId, lessonId])
+  @@index([userId])
+  @@map("user_learn_lesson_progress")
+}
+
+model UserLearnModuleProgress {
+  userId   Int
+  moduleId Int
+
+  completedQuestions Int       @default(0)
+  completedLessons   Int       @default(0)
+  completedAt        DateTime?
+  celebratedAt       DateTime?
+
+  /// Monotonic: once unlocked, never re-locked — even if the curriculum grows
+  /// underneath the user and drops them back below the threshold (§5.4). Also
+  /// written by "Open anyway", which is a deliberate one-way door.
+  unlockedAt DateTime?
+
+  updatedAt DateTime @updatedAt
+
+  user   User        @relation(fields: [userId], references: [id])
+  module LearnModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, moduleId])
+  @@index([userId])
+  @@map("user_learn_module_progress")
+}
+
+/// Denormalised per-(user, path) counters so the gallery is one query regardless
+/// of how many paths exist or how big they are.
+///
+/// The existence of this row doubles as "this user has opened this path" — the
+/// latch that stops the historical backfill in §5.2 from re-running on every
+/// page load. Enrolment marker and backfill gate are one mechanism on purpose.
+model UserLearnPathProgress {
+  userId Int
+  pathId Int
+
+  completedQuestions Int @default(0)
+  /// Subset of `completedQuestions` — powers "218 verified · 6 self-marked".
+  verifiedQuestions  Int @default(0)
+  completedLessons   Int @default(0)
+  completedModules   Int @default(0)
+
+  /// Where "Continue →" goes. Recomputed on each completion.
+  currentModuleId   Int?
+  currentLessonId   Int?
+  currentQuestionId Int?
+
+  startedAt    DateTime  @default(now())
+  completedAt  DateTime?
+  lastActiveAt DateTime  @updatedAt
+
+  user User      @relation(fields: [userId], references: [id])
+  path LearnPath @relation(fields: [pathId], references: [id], onDelete: Cascade)
+
+  @@id([userId, pathId])
+  @@index([userId, lastActiveAt])
+  @@map("user_learn_path_progress")
+}
+
+/// An MCQ answer outside a contest.
+///
+/// Separate from `McqSubmission` for the same reason `PracticeSubmission` is
+/// separate from `DsaSubmission` (PRACTICE_MODE_AND_NAVIGATION.md §4.1): no
+/// attempt, no contest, no score, and retries are allowed. Folding these into
+/// the contest table would mean every contest aggregate learning to exclude
+/// them, and `@@unique([attemptId, questionId])` has no meaning here.
+model LearnMcqAttempt {
+  id                  Int      @id @default(autoincrement())
+  userId              Int
+  questionId          Int
+  selectedOptionIndex Int
+  isCorrect           Boolean
+  answeredAt          DateTime @default(now())
+
+  user     User          @relation(fields: [userId], references: [id])
+  question LearnQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([userId, questionId, answeredAt])
+  @@map("learn_mcq_attempts")
 }
 
 model EmailOtp {

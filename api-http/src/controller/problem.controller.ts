@@ -68,6 +68,9 @@ export const createDsaProblem = async (req: AuthRequest, res: Response) => {
       timeLimit: data.timeLimit,
       memoryLimit: data.memoryLimit,
       difficulty: data.difficulty,
+      // Undefined falls through to the schema default (`draft`), so a client
+      // that omits it never accidentally publishes to the catalogue.
+      visibility: data.visibility,
       maxDurationMs: data.maxDurationMs,
       signature,
       inputFormat: data.inputFormat ?? null,
@@ -104,6 +107,7 @@ export const updateDsaProblem = async (req: AuthRequest, res: Response) => {
     timeLimit: data.timeLimit,
     memoryLimit: data.memoryLimit,
     difficulty: data.difficulty,
+    visibility: data.visibility,
     maxDurationMs: data.maxDurationMs,
   };
 

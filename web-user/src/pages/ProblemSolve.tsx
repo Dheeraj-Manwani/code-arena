@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,8 @@ import { DEFAULT_LANGUAGE, LanguageEnum, type Language } from "@/schema/language
 import { useAuthStore } from "@/stores/auth.store";
 import { contestWebSocket } from "@/lib/websocket";
 import { paths } from "@/lib/paths";
+import { SolvePathHeader, NextQuestionPanel } from "@/components/learn/SolvePathContext";
+import { useNextQuestionQuery } from "@/queries/learn.queries";
 import { ArrowLeft, History, X } from "lucide-react";
 import { Allotment } from "allotment";
 
@@ -65,6 +67,19 @@ const SolveSurface = ({ slug, problem, draft }: SolveSurfaceProps) => {
     },
   );
 
+  /**
+   * Path context (LEARN_PATHS.md D9). Query params rather than a separate
+   * route, so the catalogue and the learn path share one solve page and a URL
+   * stays shareable either way. Absent params mean a plain catalogue visit and
+   * every learn affordance below stays hidden.
+   */
+  const [searchParams] = useSearchParams();
+  const pathSlug = searchParams.get("path") ?? undefined;
+  const learnQuestionId = Number(searchParams.get("question")) || undefined;
+
+  const { data: nextQuestion } = useNextQuestionQuery(pathSlug, learnQuestionId);
+  const [showNextPanel, setShowNextPanel] = useState(false);
+
   const { data: submissions = [] } = usePracticeSubmissionsQuery(slug);
   const saveDraft = useSavePracticeDraftMutation(slug);
   const submitMutation = useSubmitPracticeMutation(slug);
@@ -89,6 +104,15 @@ const SolveSurface = ({ slug, problem, draft }: SolveSurfaceProps) => {
         );
       }
 
+      // In a learn path, an accepted verdict is the moment to offer the next
+      // question — the whole point of Phase 6. Refetch first so the panel shows
+      // the progress that includes this solve, not the one before it.
+      if (event.status === "accepted" && pathSlug) {
+        void queryClient
+          .invalidateQueries({ queryKey: ["learnNext", pathSlug, learnQuestionId] })
+          .then(() => setShowNextPanel(true));
+      }
+
       // Refetch so the row stops showing "Judging…".
       void queryClient.invalidateQueries({ queryKey: practiceSubmissionsKey(slug) });
       // An accepted verdict flips this user's solved status and moves the
@@ -101,7 +125,7 @@ const SolveSurface = ({ slug, problem, draft }: SolveSurfaceProps) => {
       unsubscribe();
       contestWebSocket.disconnect();
     };
-  }, [authUserId, queryClient, slug]);
+  }, [authUserId, queryClient, slug, pathSlug, learnQuestionId]);
 
   const solveProblem: SolveProblem = useMemo(
     () => ({
@@ -184,6 +208,10 @@ const SolveSurface = ({ slug, problem, draft }: SolveSurfaceProps) => {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
+      {nextQuestion && pathSlug && (
+        <SolvePathHeader data={nextQuestion} pathSlug={pathSlug} />
+      )}
+
       {/* No countdown and no leave-confirmation prompt: practice has no deadline,
           and leaving mid-problem is normal (§4.6). */}
       <header className="flex shrink-0 items-center justify-between border-b border-border bg-card px-4 py-3">
@@ -248,6 +276,14 @@ const SolveSurface = ({ slug, problem, draft }: SolveSurfaceProps) => {
           <main className="flex h-full min-h-0 flex-col overflow-hidden">{editor}</main>
         )}
       </div>
+
+      {showNextPanel && nextQuestion && pathSlug && (
+        <NextQuestionPanel
+          data={nextQuestion}
+          pathSlug={pathSlug}
+          onDismiss={() => setShowNextPanel(false)}
+        />
+      )}
     </div>
   );
 };

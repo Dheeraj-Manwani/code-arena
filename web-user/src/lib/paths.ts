@@ -11,6 +11,12 @@ export const paths = {
   signup: "/signup",
   forgotPassword: "/forgot-password",
 
+  // Learn
+  learn: "/learn",
+  learnPath: (slug: string) => `/learn/${slug}`,
+  learnLesson: (slug: string, lessonId: number | string) =>
+    `/learn/${slug}/lessons/${lessonId}`,
+
   // Practice
   problems: "/problems",
   problem: (slug: string) => `/problems/${slug}`,
@@ -37,6 +43,8 @@ export const paths = {
 
 /** Route patterns (with `:params`) for router config and `useMatch`. */
 export const routePatterns = {
+  learnPath: "/learn/:slug",
+  learnLesson: "/learn/:slug/lessons/:lessonId",
   problem: "/problems/:slug",
   problemSolve: "/problems/:slug/solve",
   contest: "/contests/:contestId",

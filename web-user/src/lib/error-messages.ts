@@ -45,6 +45,17 @@ const errorMessages = {
   [ApiErrorCode.RUN_EXECUTION_FAILED]:
     "Code execution failed. Check your code or try again.",
 
+  // Learn paths
+  [ApiErrorCode.LEARN_PATH_NOT_FOUND]: "That learn path isn't available.",
+  [ApiErrorCode.LEARN_LESSON_NOT_FOUND]: "That lesson isn't available.",
+  [ApiErrorCode.LEARN_QUESTION_NOT_FOUND]: "That question no longer exists.",
+  [ApiErrorCode.LEARN_SELF_MARK_UNSUPPORTED]:
+    "Only coding questions can be marked done by hand.",
+  // Deliberately not framed as a failure: the user's progress is intact and
+  // better-evidenced than what they were trying to do.
+  [ApiErrorCode.LEARN_CANNOT_UNMARK_VERIFIED]:
+    "You solved this one on Code Arena, so it stays marked complete.",
+
   // Error not required
   [ApiErrorCode.REFRESH_TOKEN_NOT_FOUND]: undefined,
   // The user chose to back out at Google's consent screen — not a failure.

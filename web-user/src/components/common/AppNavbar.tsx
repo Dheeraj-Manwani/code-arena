@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { paths } from "@/lib/paths";
 import { useAuthStore } from "@/stores/auth.store";
 import { useLogoutMutation } from "@/queries/auth.mutations";
-import { Code2, Trophy, LayoutList, User, LogOut, Menu, X } from "lucide-react";
+import { Code2, Trophy, LayoutList, User, LogOut, Menu, X, GraduationCap } from "lucide-react";
 
 type NavItem = { to: string; icon: ReactNode; label: string };
 
@@ -15,6 +15,7 @@ type NavItem = { to: string; icon: ReactNode; label: string };
  * current one is highlighted, so the bar never reflows between routes.
  */
 const NAV: NavItem[] = [
+  { to: paths.learn, icon: <GraduationCap className="w-4 h-4" />, label: "Learn" },
   { to: paths.problems, icon: <Code2 className="w-4 h-4" />, label: "Problems" },
   { to: paths.contests, icon: <Trophy className="w-4 h-4" />, label: "Contests" },
   { to: paths.myContests, icon: <LayoutList className="w-4 h-4" />, label: "My Arena" },

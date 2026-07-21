@@ -3,6 +3,32 @@ import { z } from "zod";
 export const DifficultyEnum = z.enum(["easy", "medium", "hard"]);
 export type Difficulty = z.infer<typeof DifficultyEnum>;
 
+/**
+ * Whether a question may be used outside a contest.
+ *
+ * - `draft`        — being authored; visible nowhere but the question bank.
+ * - `public`       — eligible for the practice catalogue and for learn paths.
+ * - `contest_only` — usable inside a contest, never listed anywhere else.
+ *
+ * Mirrors `ProblemVisibility` in api-http, and applies to MCQs and DSA problems
+ * alike (LEARN_PATHS.md Phase 0).
+ */
+export const ProblemVisibilityEnum = z.enum(["draft", "public", "contest_only"]);
+export type ProblemVisibility = z.infer<typeof ProblemVisibilityEnum>;
+
+export const VISIBILITY_LABELS: Record<ProblemVisibility, string> = {
+  draft: "Draft",
+  public: "Public",
+  contest_only: "Contest only",
+};
+
+/** Shown under the selector so the choice isn't guesswork. */
+export const VISIBILITY_HINTS: Record<ProblemVisibility, string> = {
+  draft: "Only you can see this. Not usable in learn paths.",
+  public: "Listed in the practice catalogue and usable in learn paths.",
+  contest_only: "Usable inside contests, but never listed for practice.",
+};
+
 export const McqQuestionSchema = z.object({
   id: z.number(),
   questionText: z.string(),
@@ -10,6 +36,7 @@ export const McqQuestionSchema = z.object({
   correctOptionIndex: z.number().int(),
   points: z.number().int(),
   maxDurationMs: z.number().nullable().optional(),
+  visibility: ProblemVisibilityEnum.default("draft"),
   createdAt: z.union([z.string(), z.date()]),
   updatedAt: z.union([z.string(), z.date()]),
   creatorId: z.number(),
@@ -35,6 +62,7 @@ export const DsaProblemSchema = z.object({
   memoryLimit: z.number().int(),
   difficulty: DifficultyEnum.nullable().optional(),
   maxDurationMs: z.number().nullable().optional(),
+  visibility: ProblemVisibilityEnum.default("draft"),
   createdAt: z.union([z.string(), z.date()]),
   updatedAt: z.union([z.string(), z.date()]),
   creatorId: z.number(),
@@ -148,6 +176,7 @@ export const UpdateDsaSchema = z
       .min(1, { message: "Memory limit is required" })
       .optional(),
     difficulty: DifficultyEnum.optional(),
+    visibility: ProblemVisibilityEnum.optional(),
     maxDurationMs: z
       .number()
       .int()
@@ -216,6 +245,8 @@ export const AddMcqSchema = z
       .int()
       .min(60 * 1_000, { message: "Max duration must be at least 1 minute" })
       .optional(),
+    /** Omitted means `draft` — the server default. */
+    visibility: ProblemVisibilityEnum.optional(),
   })
   .refine(
     (data) =>
@@ -273,6 +304,8 @@ export const AddDsaSchema = z.object({
     .min(1, { message: "Memory limit is required" })
     .default(256),
   difficulty: DifficultyEnum.optional(),
+  /** Omitted means `draft` — the server default. */
+  visibility: ProblemVisibilityEnum.optional(),
   maxDurationMs: z
     .number()
     .int()
@@ -313,6 +346,7 @@ export const UpdateMcqSchema = z
       .int()
       .min(60 * 1_000, { message: "Max duration must be at least 1 minute" })
       .optional(),
+    visibility: ProblemVisibilityEnum.optional(),
   })
   .superRefine((data, ctx) => {
     const fieldsProvided = Object.values(data).some(

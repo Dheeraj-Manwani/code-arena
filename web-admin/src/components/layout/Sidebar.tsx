@@ -4,6 +4,7 @@ import {
   PlusCircle,
   FileText,
   Database,
+  BookOpen,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -15,6 +16,7 @@ const navItems = [
   { label: "Create Contest", path: "/contests/new", icon: PlusCircle },
   { label: "Create Question", path: "/questions/new", icon: FileText },
   { label: "Question Bank", path: "/questions", icon: Database },
+  { label: "Learn Paths", path: "/learn", icon: BookOpen },
 ];
 
 export const Sidebar = () => {

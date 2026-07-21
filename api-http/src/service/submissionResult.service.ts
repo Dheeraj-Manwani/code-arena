@@ -2,6 +2,7 @@ import * as submissionRepo from "../repositories/submission.repository";
 import * as attemptRepo from "../repositories/attempt.repository";
 import * as practiceRepo from "../repositories/practice.repository";
 import { recordVerdictForStatsSafe } from "../repositories/stats.problem.repository";
+import { recordVerdictForLearnSafe } from "../repositories/learnProgress.repository";
 import { bus } from "../realtime/bus";
 import type { JudgeTarget, UpdateSubmissionPayload } from "../schema/job.schema";
 
@@ -43,6 +44,17 @@ export async function applyContestSubmissionResult(
     submittedAt: updated.submittedAt,
   });
 
+  // Solving a problem anywhere credits every learn path containing it
+  // (LEARN_PATHS.md §5.2). Safe-wrapped for the same reason as the call above:
+  // this runs inside contest verdict handling, and a learn progress bar must
+  // never cost a participant their scored result.
+  await recordVerdictForLearnSafe(
+    updated.userId,
+    updated.problemId,
+    verdict.status === "accepted",
+    updated.submittedAt,
+  );
+
   bus.emit("submission_result", {
     type: "SUBMISSION_RESULT",
     scope: "contest",
@@ -82,6 +94,13 @@ export async function applyPracticeSubmissionResult(
     isAccepted: verdict.status === "accepted",
     submittedAt: updated.submittedAt,
   });
+
+  await recordVerdictForLearnSafe(
+    updated.userId,
+    updated.problemId,
+    verdict.status === "accepted",
+    updated.submittedAt,
+  );
 
   bus.emit("submission_result", {
     type: "SUBMISSION_RESULT",

@@ -5,6 +5,8 @@ import CreateContest from "@/pages/CreateContest";
 import ContestDetail from "@/pages/ContestDetail";
 import QuestionBank from "@/pages/QuestionBank";
 import CreateQuestion from "@/pages/CreateQuestion";
+import LearnPaths from "@/pages/LearnPaths";
+import LearnPathBuilder from "@/pages/LearnPathBuilder";
 import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
 import ForgotPassword from "@/pages/ForgotPassword";
@@ -61,6 +63,14 @@ export const router = createBrowserRouter([
       {
         path: "/questions/new",
         element: <CreateQuestion />,
+      },
+      {
+        path: "/learn",
+        element: <LearnPaths />,
+      },
+      {
+        path: "/learn/:pathId",
+        element: <LearnPathBuilder />,
       },
     ],
   },

@@ -405,6 +405,10 @@ export const createStandaloneMcqQuestion = async (data: Prisma.McqQuestionUnchec
       correctOptionIndex: data.correctOptionIndex,
       points: data.points,
       maxDurationMs: data.maxDurationMs,
+      // Explicitly listed rather than spread, so a new column is a deliberate
+      // decision here rather than something that silently starts flowing
+      // through from request bodies. Undefined falls back to the schema default.
+      visibility: data.visibility,
       creatorId: data.creatorId,
     },
   });
@@ -622,6 +626,7 @@ export const getAllMcqQuestions = async (page: number, limit: number, search?: s
         correctOptionIndex: true,
         points: true,
         maxDurationMs: true,
+        visibility: true,
         createdAt: true,
         updatedAt: true,
         creatorId: true,
@@ -679,6 +684,7 @@ export const getAllDsaProblems = async (page: number, limit: number, search?: st
         memoryLimit: true,
         difficulty: true,
         maxDurationMs: true,
+        visibility: true,
         createdAt: true,
         updatedAt: true,
         creatorId: true,

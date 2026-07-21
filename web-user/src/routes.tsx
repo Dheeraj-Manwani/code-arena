@@ -7,6 +7,9 @@ import { RouteErrorBoundary } from "./components/RouteErrorBoundary";
 import { paths, routePatterns } from "./lib/paths";
 import Dashboard from "@/pages/Dashboard";
 import Contests from "@/pages/Contests";
+import Learn from "@/pages/Learn";
+import LearnPath from "@/pages/LearnPath";
+import LearnLesson from "@/pages/LearnLesson";
 import Problems from "@/pages/Problems";
 import ProblemDetails from "@/pages/ProblemDetails";
 import ProblemSolve from "@/pages/ProblemSolve";
@@ -38,7 +41,21 @@ export const router = createBrowserRouter([
     element: <AppLayout />,
     errorElement: <RouteErrorBoundary />,
     children: [
-      { path: "/", element: <Navigate to={paths.problems} replace /> },
+      {
+        // The front door (LEARN_PATHS.md D10). Deliberately the last thing this
+        // work changed: the plan sequenced it after everything else so the page
+        // was worth landing on before anyone was sent there.
+        //
+        // Third front-door change in this codebase — /dashboard → /problems →
+        // /learn — which is why the target lives in `paths` and every legacy
+        // path still redirects rather than 404ing.
+        path: "/",
+        element: <Navigate to={paths.learn} replace />,
+      },
+
+      { path: paths.learn, element: <Learn /> },
+      { path: routePatterns.learnPath, element: <LearnPath /> },
+      { path: routePatterns.learnLesson, element: <LearnLesson /> },
 
       { path: paths.problems, element: <Problems /> },
       { path: routePatterns.problem, element: <ProblemDetails /> },

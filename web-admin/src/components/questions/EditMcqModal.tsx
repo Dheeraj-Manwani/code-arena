@@ -14,7 +14,8 @@ import { Plus, Trash2, GripVertical, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { McqQuestion } from "@/schema/problem.schema";
 import { useUpdateMcqQuestionMutation } from "@/queries/problem.mutations";
-import { UpdateMcqSchema, type UpdateMcqType } from "@/schema/problem.schema";
+import { UpdateMcqSchema, type UpdateMcqType, type ProblemVisibility } from "@/schema/problem.schema";
+import { VisibilitySelect } from "@/components/questions/VisibilitySelect";
 
 interface EditMcqModalProps {
   question: McqQuestion | null;
@@ -35,6 +36,7 @@ export const EditMcqModal = ({
     options: [] as string[],
     correctOptionIndex: 0,
     maxDurationMs: "",
+    visibility: "draft" as ProblemVisibility,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [optionDragIndex, setOptionDragIndex] = useState<number | null>(null);
@@ -55,6 +57,7 @@ export const EditMcqModal = ({
         maxDurationMs: question.maxDurationMs
           ? String(Math.round(question.maxDurationMs / 60000))
           : "",
+        visibility: question.visibility ?? "draft",
       });
       setErrors({});
     }
@@ -152,6 +155,7 @@ export const EditMcqModal = ({
       options: formData.options.filter((opt) => opt.trim()),
       correctOptionIndex: formData.correctOptionIndex,
       points: formData.points,
+      visibility: formData.visibility,
       ...(formData.maxDurationMs &&
         formData.maxDurationMs.trim() !== "" && {
         maxDurationMs: parseInt(formData.maxDurationMs) * 60000 || undefined,
@@ -225,7 +229,7 @@ export const EditMcqModal = ({
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div>
               <Label className="arena-label">Points</Label>
               <Input
@@ -279,6 +283,11 @@ export const EditMcqModal = ({
                 </p>
               )}
             </div>
+            <VisibilitySelect
+              value={formData.visibility}
+              onChange={(visibility) => setFormData({ ...formData, visibility })}
+              disabled={isUpdating}
+            />
           </div>
 
           <div>

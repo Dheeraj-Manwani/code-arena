@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { VisibilityBadge } from "@/components/questions/VisibilityBadge";
 import { motion } from "motion/react";
 import { pageVariants } from "@/lib/animations";
 import { useMcqQuestionsQuery, useDsaProblemsQuery } from "@/queries/problem.queries";
@@ -243,6 +244,9 @@ const QuestionBank = () => {
                     <th className="text-left py-4 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Points
                     </th>
+                    <th className="text-left py-4 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      Visibility
+                    </th>
                     <th className="text-right py-4 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Actions
                     </th>
@@ -267,6 +271,9 @@ const QuestionBank = () => {
                         </td>
                         <td className="py-4 px-4">
                           <Skeleton className="h-4 w-12" />
+                        </td>
+                        <td className="py-4 px-4">
+                          <Skeleton className="h-5 w-16 rounded-full" />
                         </td>
                         <td className="py-4 px-4">
                           <div className="flex items-center justify-end gap-2">
@@ -302,6 +309,9 @@ const QuestionBank = () => {
                             </td>
                             <td className="py-4 px-4 text-sm text-muted-foreground font-mono">
                               {question.points}
+                            </td>
+                            <td className="py-4 px-4">
+                              <VisibilityBadge visibility={question.visibility} />
                             </td>
                             <td className="py-4 px-4">
                               <div className="flex items-center justify-end gap-2">
@@ -364,6 +374,9 @@ const QuestionBank = () => {
                     <th className="text-left py-4 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Points
                     </th>
+                    <th className="text-left py-4 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      Visibility
+                    </th>
                     <th className="text-right py-4 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Actions
                     </th>
@@ -400,6 +413,9 @@ const QuestionBank = () => {
                         </td>
                         <td className="py-4 px-4">
                           <Skeleton className="h-4 w-12" />
+                        </td>
+                        <td className="py-4 px-4">
+                          <Skeleton className="h-5 w-16 rounded-full" />
                         </td>
                         <td className="py-4 px-4">
                           <div className="flex items-center justify-end gap-2">
@@ -463,6 +479,9 @@ const QuestionBank = () => {
                           </td>
                           <td className="py-4 px-4 text-sm text-muted-foreground font-mono">
                             {problem.points}
+                          </td>
+                          <td className="py-4 px-4">
+                            <VisibilityBadge visibility={problem.visibility} />
                           </td>
                           <td className="py-4 px-4">
                             <div className="flex items-center justify-end gap-2">

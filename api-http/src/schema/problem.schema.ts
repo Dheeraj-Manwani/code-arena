@@ -76,6 +76,7 @@ export const McqQuestionSchema = z.object({
   correctOptionIndex: z.number().int(),
   points: z.number().int(),
   maxDurationMs: z.number().nullable().optional(),
+  visibility: ProblemVisibilityEnum,
   createdAt: z.union([z.string(), z.date()]),
   updatedAt: z.union([z.string(), z.date()]),
   creatorId: z.number(),
@@ -101,6 +102,7 @@ export const DsaProblemSchema = z.object({
   memoryLimit: z.number().int(),
   difficulty: DifficultyEnum.nullable().optional(),
   maxDurationMs: z.number().nullable().optional(),
+  visibility: ProblemVisibilityEnum,
   createdAt: z.union([z.string(), z.date()]),
   updatedAt: z.union([z.string(), z.date()]),
   creatorId: z.number(),
@@ -246,6 +248,7 @@ export const UpdateDsaSchema = z
       .min(1, { message: "Memory limit is required" })
       .optional(),
     difficulty: DifficultyEnum.optional(),
+    visibility: ProblemVisibilityEnum.optional(),
     maxDurationMs: z
       .number()
       .int()
@@ -317,6 +320,9 @@ export const AddMcqSchema = z
       .int()
       .min(60 * 1_000, { message: "Max duration must be at least 1 minute" })
       .optional(),
+    /// Omitted means `draft` — the database default. A question is not exposed
+    /// outside a contest unless the creator says so.
+    visibility: ProblemVisibilityEnum.optional(),
   })
   .refine(
     (data) =>
@@ -377,6 +383,9 @@ export const AddDsaSchema = z.object({
     .min(1, { message: "Memory limit is required" })
     .default(256),
   difficulty: DifficultyEnum.optional(),
+  /// Omitted means `draft` — the database default. A problem does not reach the
+  /// practice catalogue until the creator publishes it.
+  visibility: ProblemVisibilityEnum.optional(),
   maxDurationMs: z
     .number()
     .int()
@@ -417,6 +426,7 @@ export const UpdateMcqSchema = z
       .int()
       .min(60 * 1_000, { message: "Max duration must be at least 1 minute" })
       .optional(),
+    visibility: ProblemVisibilityEnum.optional(),
   })
   .superRefine((data, ctx) => {
     const fieldsProvided = Object.values(data).some(

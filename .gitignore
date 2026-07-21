@@ -1,1 +1,4 @@
 docs/
+# Root launcher package (scripts/dev.mjs) has no dependencies, but pnpm still
+# creates these when running a root script.
+node_modules/

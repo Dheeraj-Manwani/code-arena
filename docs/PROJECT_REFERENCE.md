@@ -108,8 +108,8 @@ Routes → Controllers → Services → Repositories → Prisma (PostgreSQL)
 | Layer | Responsibility |
 |---|---|
 | **Routes** (`src/routes/`) | Map HTTP methods to controller functions, apply middleware |
-| **Controllers** (`src/controllers/`) | Parse/validate request input (Zod), call services, return standardized response |
-| **Services** (`src/services/`) | Business logic — contest phase rules, submission scoring, auth flows |
+| **Controllers** (`src/controller/`) | Parse/validate request input (Zod), call services, return standardized response |
+| **Services** (`src/service/`) | Business logic — contest phase rules, submission scoring, auth flows |
 | **Repositories** (`src/repositories/`) | Direct Prisma queries, zero business logic |
 | **Lib** (`src/lib/db.ts`) | Prisma client singleton |
 
@@ -130,7 +130,7 @@ api-http/src/
 │   └── redisPublisher.ts                 # Redis publisher for run/leaderboard events
 ├── config/
 │   └── env.ts                            # Zod-validated env, parsed at startup
-├── controllers/
+├── controller/
 │   ├── auth.controller.ts
 │   ├── contest.controller.ts
 │   ├── dashboard.controller.ts
@@ -151,7 +151,7 @@ api-http/src/
 │   ├── internal.routes.ts                # Worker callbacks (Bearer BACKEND_INTERNAL_SECRET)
 │   ├── stats.routes.ts
 │   └── submission.routes.ts
-├── services/
+├── service/
 │   ├── auth.service.ts
 │   ├── contest.service.ts
 │   ├── leaderboard.service.ts
@@ -518,25 +518,39 @@ web-user/src/
 
 ### 5.2 Routing
 
-| Route | Guard | Page Component |
+Route strings live in `web-user/src/lib/paths.ts`, and chrome comes from the layout a
+route sits in rather than from pattern-matching the pathname
+(`PRACTICE_MODE_AND_NAVIGATION.md` §3.1).
+
+| Route | Layout | Page Component |
 |---|---|---|
 | `/login` | `AuthRoute` | `Login` |
 | `/signup` | `AuthRoute` | `Signup` |
 | `/forgot-password` | `AuthRoute` | `ForgotPassword` |
-| `/` | `ProtectedRoute` | Redirect → `/dashboard` |
-| `/dashboard` | `ProtectedRoute` | `Dashboard` |
-| `/contests` | `ProtectedRoute` | `Contests` |
-| `/contest/:id/details` | `ProtectedRoute` | `ContestDetails` |
-| `/contest/:contestId/attempt/:attemptId` | `ProtectedRoute` | `ContestPage` (full-screen, no navbar) |
-| `/contest/:contestId/attempt/:attemptId/leaderboard` | `ProtectedRoute` | `ContestLeaderboardPage` |
-| `/my-contests` | `ProtectedRoute` | `MyContests` |
-| `/leaderboard/:contestId?` | `ProtectedRoute` | `Leaderboard` |
-| `/profile` | `ProtectedRoute` | `Profile` |
-| `/results/:attemptId` | `ProtectedRoute` | `ContestResultsPage` |
+| `/` | `AppLayout` | Redirect → `/learn` |
+| `/learn` | `AppLayout` | `Learn` (path gallery) |
+| `/learn/:slug` | `AppLayout` | `LearnPath` |
+| `/learn/:slug/lessons/:lessonId` | `AppLayout` | `LearnLesson` |
+| `/problems` | `AppLayout` | `Problems` (catalogue) |
+| `/problems/:slug` | `AppLayout` | `ProblemDetails` |
+| `/dashboard` | `AppLayout` | `Dashboard` |
+| `/contests` | `AppLayout` | `Contests` |
+| `/contests/:contestId` | `AppLayout` | `ContestDetails` |
+| `/contests/:contestId/leaderboard` | `AppLayout` | `Leaderboard` |
+| `/my/contests` | `AppLayout` | `MyContests` |
+| `/profile` | `AppLayout` | `Profile` |
+| `/submissions/:attemptId` | `AppLayout` | `ContestResultsPage` |
+| `/problems/:slug/solve` | `FocusLayout` | `ProblemSolve` |
+| `/contests/:contestId/attempts/:attemptId` | `FocusLayout` | `ContestPage` |
+| `/contests/:contestId/attempts/:attemptId/leaderboard` | `FocusLayout` | `ContestLeaderboardPage` |
+| _legacy paths_ | — | `LegacyRedirect` → the equivalents above |
 | `*` | None | `NotFound` |
 
-- `AuthRoute`: redirects authenticated users to `/dashboard`
-- `ProtectedRoute`: redirects unauthenticated users to `/login`, renders `AppNavbar` for non-contest routes
+- `AuthRoute`: redirects authenticated users away from the auth pages
+- `AppLayout`: auth guard + `AppNavbar`
+- `FocusLayout`: auth guard, no navbar — full-screen editor surfaces
+- **The front door has moved twice**: `/dashboard` → `/problems` (`PRACTICE_MODE` Phase 1)
+  → `/learn` (`LEARN_PATHS.md` Phase 7). Every superseded path still redirects.
 
 ---
 
@@ -922,6 +936,48 @@ __ERROR__exception message
 - Zod schemas are duplicated across services (`web-user/src/schema/`, `judge-worker/src/schema/`) for type safety
 - The `JudgeJob` payload shape is the contract between `api-http` (producer) and `judge-worker` (consumer)
 - `__CASE__`/`__OUTPUT__`/`__ERROR__` stdout markers are the contract between `api-http` (harness generator) and `judge-worker` (parser)
+
+---
+
+## 7a. Learn Paths
+
+A structured-learning section layered on the existing problem bank. Designed and built in
+eight phases; the full rationale, page design and per-phase notes are in
+**`LEARN_PATHS.md`**.
+
+**Shape:** `LearnPath` → `LearnModule` → `LearnLesson` → `LearnQuestion`, where a
+*question* is the only thing that can be completed. Containers are complete when all their
+children are — there is no reading credit and no participation credit, which is what makes
+the progress numbers on those pages trustworthy.
+
+| Concern | Where |
+|---|---|
+| Curriculum + admin writes | `repositories/learn.repository.ts`, `service/adminLearn.service.ts` |
+| Learner reads (separate projection) | `repositories/learnCatalogue.repository.ts`, `service/learn.service.ts` |
+| Per-user progress + verdict fan-out | `repositories/learnProgress.repository.ts` |
+| Soft gating predicate (pure) | `service/learnUnlock.ts` |
+| Sparse ordering for drag-reorder (pure) | `lib/ordering.ts` |
+| Curriculum cache | `lib/curriculumCache.ts` |
+| Boot repair for drifted counters | `jobs/reconcileLearn.ts` |
+| Routes | `routes/learn.routes.ts` (learner), `routes/adminLearn.routes.ts` (creator) |
+
+**Two things to know before changing any of it:**
+
+1. **The learner and creator paths have deliberately separate repositories and
+   projections.** The creator one carries authoring metadata including MCQ answer keys;
+   re-authorising it to serve learners is the trap `PRACTICE_MODE_AND_NAVIGATION.md` §4.4
+   documents. `correctOptionIndex` must never appear in a learner response before that
+   learner has answered correctly — asserted against literal serialised bodies in
+   `prisma/learn.mcq.itest.ts`.
+2. **Solving a problem anywhere credits every learn path containing it.** The fan-out runs
+   inside `submissionResult.service.ts`, the same handler that records contest results, and
+   is safe-wrapped for that reason: a learn counter must never cost a user their verdict.
+   Counters are recomputed rather than incremented, so a swallowed failure self-heals on the
+   next write or at boot.
+
+Integration tests requiring a live Postgres live in `prisma/*.itest.ts` and run via
+`npm run test:integration` — a separate vitest project, because `vitest.config.ts` promises
+its suite is DB-free.
 
 ---
 

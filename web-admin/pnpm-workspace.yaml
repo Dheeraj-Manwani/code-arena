@@ -1,0 +1,10 @@
+# Which dependencies may run install lifecycle scripts.
+#
+# pnpm 10+ blocks postinstall scripts by default and its pre-command dependency
+# check exits 1 until each listed package has an explicit decision
+# (ERR_PNPM_IGNORED_BUILDS). Written up front here so the reinstall doesn't hit
+# that wall immediately after clearing the moved-store one.
+allowBuilds:
+  # Installs its platform binary. Vite bundles through esbuild, so `pnpm build`
+  # and `pnpm dev` both depend on it.
+  esbuild: true

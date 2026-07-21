@@ -28,6 +28,25 @@ const errorMessages = {
   [ApiErrorCode.INTERNAL_SERVER_ERROR]:
     "An unexpected error occurred. Please try again later.",
 
+  // Learn paths
+  [ApiErrorCode.LEARN_PATH_NOT_FOUND]: "Learn path not found.",
+  [ApiErrorCode.LEARN_MODULE_NOT_FOUND]: "That module no longer exists.",
+  [ApiErrorCode.LEARN_LESSON_NOT_FOUND]: "That lesson no longer exists.",
+  [ApiErrorCode.LEARN_QUESTION_NOT_FOUND]: "That question no longer exists.",
+  [ApiErrorCode.LEARN_QUESTION_DUPLICATE]:
+    "That question is already in this lesson.",
+  // The server knows *which* contest, but the error envelope carries only a
+  // code — so the specific name is surfaced proactively in the question picker
+  // instead, where the row is disabled and names the contest. This message is
+  // the fallback for the race: a contest published between opening the picker
+  // and clicking the row.
+  [ApiErrorCode.LEARN_PROBLEM_IN_LIVE_CONTEST]:
+    "That problem is in a competitive contest that hasn't finished. Adding it would let participants practise it with the same test cases.",
+  [ApiErrorCode.LEARN_PATH_NOT_PUBLISHABLE]:
+    "This path isn't ready to publish — check the issues listed above.",
+  [ApiErrorCode.LEARN_PATH_SLUG_TAKEN]:
+    "A path with that slug already exists. Pick another.",
+
   // Error not required
   [ApiErrorCode.REFRESH_TOKEN_NOT_FOUND]: undefined,
 };

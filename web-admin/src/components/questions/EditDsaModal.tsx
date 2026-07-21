@@ -21,7 +21,8 @@ import { Plus, Trash2, Clock, Database, FileCode } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { DsaProblem } from "@/schema/problem.schema";
 import { useUpdateDsaProblemMutation } from "@/queries/problem.mutations";
-import { UpdateDsaSchema, type UpdateDsaType } from "@/schema/problem.schema";
+import { UpdateDsaSchema, type UpdateDsaType, type ProblemVisibility } from "@/schema/problem.schema";
+import { VisibilitySelect } from "@/components/questions/VisibilitySelect";
 import { problemApi } from "@/api/problem";
 import {
   BOILERPLATE_TYPE_OPTIONS,
@@ -98,6 +99,7 @@ export const EditDsaModal = ({
     timeLimit: 2000,
     memoryLimit: 256,
     difficulty: "" as "easy" | "medium" | "hard" | "",
+    visibility: "draft" as ProblemVisibility,
     maxDurationMs: "",
     inputFormat: "",
     outputFormat: "",
@@ -124,6 +126,7 @@ export const EditDsaModal = ({
         timeLimit: problem.timeLimit || 2000,
         memoryLimit: problem.memoryLimit || 256,
         difficulty: (problem.difficulty as "easy" | "medium" | "hard") || "",
+        visibility: problem.visibility ?? "draft",
         maxDurationMs: problem.maxDurationMs
           ? String(Math.round(problem.maxDurationMs / 60000))
           : "",
@@ -327,6 +330,7 @@ export const EditDsaModal = ({
       timeLimit: formData.timeLimit,
       memoryLimit: formData.memoryLimit,
       ...(formData.difficulty && { difficulty: formData.difficulty }),
+      visibility: formData.visibility,
       ...(formData.maxDurationMs &&
         formData.maxDurationMs.trim() !== "" && {
         maxDurationMs: parseInt(formData.maxDurationMs) * 60000 || undefined,
@@ -441,7 +445,7 @@ export const EditDsaModal = ({
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div>
               <Label className="arena-label">Tags (comma-separated)</Label>
               <Input
@@ -493,6 +497,11 @@ export const EditDsaModal = ({
                 </p>
               )}
             </div>
+            <VisibilitySelect
+              value={formData.visibility}
+              onChange={(visibility) => setFormData({ ...formData, visibility })}
+              disabled={isUpdating}
+            />
           </div>
 
           {/* Input / Output Format */}

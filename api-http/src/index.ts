@@ -16,10 +16,13 @@ import statsRoutes from "./routes/stats.routes";
 import profileRoutes from "./routes/profile.routes";
 import attemptRoutes from "./routes/attempt.routes";
 import runRoutes from "./routes/run.routes";
+import adminLearnRoutes from "./routes/adminLearn.routes";
+import learnRoutes from "./routes/learn.routes";
 import { errorHandler } from "./middleware/error-handler";
 import { configurePassport, passport } from "./auth/passport";
 import { attachRealtime } from "./realtime/server";
 import { reconcilePendingSubmissions } from "./jobs/reconcile";
+import { reconcileLearnProgress } from "./jobs/reconcileLearn";
 import { submitPool } from "./jobs/pool";
 import { logger } from "./lib/logger";
 
@@ -61,6 +64,8 @@ app.use("/api/stats", statsRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/attempts", attemptRoutes);
 app.use("/api/run", runRoutes);
+app.use("/api/admin/learn", adminLearnRoutes);
+app.use("/api/learn", learnRoutes);
 
 app.use(errorHandler);
 
@@ -75,6 +80,14 @@ server.listen(PORT, () => {
   // Re-enqueue any submissions left `pending` by a previous crash (Phase 3).
   reconcilePendingSubmissions().catch((err) =>
     logger.error({ err: err instanceof Error ? err.message : String(err) }, "Reconciliation failed")
+  );
+  // Repair learn counters left behind by a best-effort verdict fan-out that
+  // failed (LEARN_PATHS.md Phase 4). Idempotent, so a clean boot is a no-op.
+  reconcileLearnProgress().catch((err) =>
+    logger.error(
+      { err: err instanceof Error ? err.message : String(err) },
+      "Learn progress reconciliation failed"
+    )
   );
 });
 
