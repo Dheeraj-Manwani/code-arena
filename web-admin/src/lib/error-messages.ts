@@ -28,6 +28,15 @@ const errorMessages = {
   [ApiErrorCode.INTERNAL_SERVER_ERROR]:
     "An unexpected error occurred. Please try again later.",
 
+  // Image uploads
+  [ApiErrorCode.UPLOAD_NO_FILE]: "Choose an image to upload.",
+  [ApiErrorCode.UPLOAD_TOO_LARGE]: "That image is too large — keep it under 2 MB.",
+  [ApiErrorCode.UPLOAD_UNSUPPORTED_TYPE]:
+    "Only PNG, JPEG, WebP and GIF images can be uploaded.",
+  [ApiErrorCode.UPLOAD_NOT_CONFIGURED]:
+    "Image uploads aren't set up on this server yet.",
+  [ApiErrorCode.UPLOAD_FAILED]: "Couldn't store that image. Please try again.",
+
   // Learn paths
   [ApiErrorCode.LEARN_PATH_NOT_FOUND]: "Learn path not found.",
   [ApiErrorCode.LEARN_MODULE_NOT_FOUND]: "That module no longer exists.",

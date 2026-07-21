@@ -41,6 +41,19 @@ const envSchema = z.object({
   /** Where the callback sends the browser once the refresh cookie is set. */
   FRONTEND_URL: z.string().default("http://localhost:5173"),
 
+  // Cloudflare R2, for images embedded in problem descriptions.
+  //
+  // Optional as a group, exactly like Google OAuth below: unset means image
+  // upload is off and /api/uploads/image returns 501, so a fresh clone and CI
+  // still boot and run without storage credentials.
+  // `isImageUploadConfigured` is the single check for "is it on".
+  R2_ACCOUNT_ID: z.string().optional(),
+  R2_ACCESS_KEY_ID: z.string().optional(),
+  R2_SECRET_ACCESS_KEY: z.string().optional(),
+  R2_BUCKET: z.string().optional(),
+  /** Public base URL of the bucket — an r2.dev address or a custom domain. */
+  R2_PUBLIC_URL: z.string().optional(),
+
   // Which execution backend runs submissions (SELF_HOSTED_JUDGE.md).
   //   judge0 — RapidAPI (needs the JUDGE0_* vars)
   //   local  — container per submission (needs Docker + judge images)
@@ -115,6 +128,40 @@ export const env: Env = parsed.data;
 export const isGoogleOAuthConfigured = Boolean(
   env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.GOOGLE_CALLBACK_URL,
 );
+
+/**
+ * Image upload is on only when the whole R2 group is present.
+ *
+ * Partial config is a deployment mistake rather than a valid state — a bucket
+ * name with no credentials would fail at the first upload with an opaque SDK
+ * error, so it is surfaced at boot instead.
+ */
+export const isImageUploadConfigured = Boolean(
+  env.R2_ACCOUNT_ID &&
+    env.R2_ACCESS_KEY_ID &&
+    env.R2_SECRET_ACCESS_KEY &&
+    env.R2_BUCKET &&
+    env.R2_PUBLIC_URL,
+);
+
+const r2VarsSet = [
+  env.R2_ACCOUNT_ID,
+  env.R2_ACCESS_KEY_ID,
+  env.R2_SECRET_ACCESS_KEY,
+  env.R2_BUCKET,
+  env.R2_PUBLIC_URL,
+].filter(Boolean).length;
+
+if (r2VarsSet > 0 && r2VarsSet < 5) {
+  // eslint-disable-next-line no-console
+  console.error(
+    "\n[api-http] Invalid environment configuration:\n" +
+      "  - Cloudflare R2 is partially configured. Set all of R2_ACCOUNT_ID,\n" +
+      "    R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET and R2_PUBLIC_URL,\n" +
+      "    or none of them.\n",
+  );
+  process.exit(1);
+}
 
 const googleVarsSet = [
   env.GOOGLE_CLIENT_ID,

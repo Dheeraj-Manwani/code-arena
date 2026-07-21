@@ -8,6 +8,7 @@ import { useProblemQuery } from "@/queries/practice.queries";
 import type { Difficulty } from "@/schema/problem.schema";
 import { paths } from "@/lib/paths";
 import { cn } from "@/lib/utils";
+import { Markdown } from "@/components/common/Markdown";
 import { Clock, Cpu, Trophy, ArrowLeft, Code2, CheckCircle2 } from "lucide-react";
 
 const difficultyStyles: Record<Difficulty, string> = {
@@ -125,9 +126,9 @@ const ProblemDetails = () => {
             <CardTitle className="text-lg">Description</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-            <p className="whitespace-pre-wrap leading-relaxed text-muted-foreground">
-              {problem.description}
-            </p>
+            {/* Same renderer as the solve page, so a statement reads
+                identically in both places. */}
+            <Markdown>{problem.description}</Markdown>
 
             {problem.inputFormat && (
               <div>

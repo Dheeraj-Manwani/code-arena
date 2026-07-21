@@ -1,4 +1,6 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, type ReactNode } from "react";
+import { cn } from "@/lib/utils";
+import { Markdown } from "@/components/common/Markdown";
 import Editor from "@monaco-editor/react";
 import type { TestCaseUI, SolveProblem } from "@/schema/problem.schema";
 import { LANGUAGE_CONFIG, type Language } from "@/schema/language.schema";
@@ -44,6 +46,118 @@ function formatTestCaseInput(
   }
 }
 
+/** Which view the left pane is showing, when it has more than one. */
+export type SolveSideTab = "description" | "submissions";
+
+interface PaneShellProps {
+  hasTabs: boolean;
+  activeTab: SolveSideTab;
+  onTabChange?: (tab: SolveSideTab) => void;
+  submissionCount: number;
+  submissions: ReactNode;
+  children: ReactNode;
+}
+
+/**
+ * The left pane's frame.
+ *
+ * Two shapes on purpose. Without tabs it reproduces the original single
+ * scrolling container byte for byte, so the contest surface — which shares this
+ * component — sees no change at all. With tabs, scrolling has to move inside
+ * the panel so the tab strip stays pinned while the description scrolls under
+ * it, which the original structure could not do.
+ *
+ * The description stays MOUNTED while Submissions is showing, hidden with CSS
+ * rather than unmounted. Losing your scroll position in a long problem
+ * statement every time you glance at a verdict is precisely the annoyance that
+ * makes people stop using the tab.
+ */
+const PaneShell = ({
+  hasTabs,
+  activeTab,
+  onTabChange,
+  submissionCount,
+  submissions,
+  children,
+}: PaneShellProps) => {
+  if (!hasTabs) {
+    return <div className="h-full w-full overflow-auto bg-background">{children}</div>;
+  }
+
+  const tabs: { id: SolveSideTab; label: string; badge?: number }[] = [
+    { id: "description", label: "Description" },
+    { id: "submissions", label: "Submissions", badge: submissionCount },
+  ];
+
+  return (
+    <div className="flex h-full w-full flex-col overflow-hidden bg-background">
+      <div
+        role="tablist"
+        aria-label="Problem panel"
+        className="flex shrink-0 items-center gap-1 border-b border-border bg-card px-2"
+      >
+        {tabs.map((tab) => {
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              role="tab"
+              type="button"
+              aria-selected={isActive}
+              aria-controls={`pane-${tab.id}`}
+              onClick={() => onTabChange?.(tab.id)}
+              className={cn(
+                "relative flex items-center gap-1.5 px-3 py-2.5 font-mono text-sm transition-colors",
+                // The active marker is a border on the element itself rather
+                // than an absolutely-positioned bar, so it can't drift out of
+                // alignment when the pane is resized by the split handle.
+                "border-b-2",
+                isActive
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {tab.label}
+              {tab.badge !== undefined && tab.badge > 0 && (
+                <span
+                  className={cn(
+                    "rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
+                    isActive
+                      ? "bg-primary/15 text-primary"
+                      : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {tab.badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      <div
+        id="pane-description"
+        role="tabpanel"
+        // `hidden` rather than conditional rendering — see the note above about
+        // preserving scroll position.
+        hidden={activeTab !== "description"}
+        className="min-h-0 flex-1 overflow-auto"
+      >
+        {children}
+      </div>
+
+      <div
+        id="pane-submissions"
+        role="tabpanel"
+        hidden={activeTab !== "submissions"}
+        className="min-h-0 flex-1 overflow-auto p-3"
+      >
+        {submissions}
+      </div>
+    </div>
+  );
+};
+
 interface CodingQuestionProps {
   question: SolveProblem;
   code: string;
@@ -54,6 +168,26 @@ interface CodingQuestionProps {
   isSubmitting?: boolean;
   /** Submit button text. Contest and practice word this differently. */
   submitLabel?: string;
+
+  /**
+   * Optional second view for the left pane, shown as a "Submissions" tab beside
+   * "Description".
+   *
+   * Opt-in because this component is shared: practice has a submission history
+   * worth putting a tab on, and a contest attempt does not. When omitted the
+   * pane renders exactly as it always has — no tab strip at all — so the
+   * contest surface is untouched by this.
+   */
+  submissionsPanel?: ReactNode;
+  /** Count shown on the tab. */
+  submissionCount?: number;
+  /**
+   * Controlled by the parent, because the parent is what knows when to change
+   * it: submitting should pull the Submissions tab forward, and that event
+   * happens up in the page, not here.
+   */
+  activeSideTab?: SolveSideTab;
+  onSideTabChange?: (tab: SolveSideTab) => void;
 }
 
 const DSAQuestion = ({
@@ -65,6 +199,10 @@ const DSAQuestion = ({
   onSubmit,
   isSubmitting = false,
   submitLabel = "Submit",
+  submissionsPanel,
+  submissionCount = 0,
+  activeSideTab = "description",
+  onSideTabChange,
 }: CodingQuestionProps) => {
   const [customTestCases, setCustomTestCases] = useState<TestCaseUI[]>([]);
   const [testResults, setTestResults] = useState<TestCaseResult[]>([]);
@@ -194,9 +332,15 @@ const DSAQuestion = ({
         proportionalLayout
         className="h-full"
       >
-        {/* Left Pane - Problem Description */}
+        {/* Left Pane - Problem Description (+ Submissions, when provided) */}
         <Allotment.Pane minSize={200} preferredSize="45%">
-          <div className="h-full w-full overflow-auto bg-background">
+          <PaneShell
+            hasTabs={Boolean(submissionsPanel)}
+            activeTab={activeSideTab}
+            onTabChange={onSideTabChange}
+            submissionCount={submissionCount}
+            submissions={submissionsPanel}
+          >
             <div className="flex flex-col min-h-full">
               <div className="px-6 py-4 border-b border-border bg-card/50 shrink-0">
                 <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -254,9 +398,10 @@ const DSAQuestion = ({
                     </h3>
                   </div>
                   <div className="p-4">
-                    <p className="text-foreground/90 leading-relaxed whitespace-pre-line text-sm">
-                      {question.description}
-                    </p>
+                    {/* Markdown, so a statement can carry formatting and the
+                        screenshots authors embed. Sanitised and HTML-free —
+                        see `common/Markdown`. */}
+                    <Markdown className="text-sm">{question.description}</Markdown>
                   </div>
                 </section>
 
@@ -395,7 +540,7 @@ const DSAQuestion = ({
                 </section>
               </div>
             </div>
-          </div>
+          </PaneShell>
         </Allotment.Pane>
 
         {/* Right Pane - Editor + Test Cases (nested vertical Allotment) */}

@@ -246,3 +246,74 @@
   --color-sidebar-border: hsl(var(--sidebar-border));
   --color-sidebar-ring: hsl(var(--sidebar-ring));
 }
+
+/*
+ * Markdown preview styles.
+ *
+ * Copied from web-user so the authoring preview matches what a learner
+ * sees. Same reasoning as the duplicated sanitiser schema in
+ * components/common/Markdown.tsx: a preview that renders differently from
+ * the real thing is worse than no preview at all.
+ */
+ * Scoped to `.app-prose` rather than applied globally: markdown output is the
+ * only place in the app where bare `h2`/`ul`/`code` elements appear without
+ * utility classes, and styling those tags globally would leak into every
+ * component that happens to render one.
+ */
+.app-prose {
+  color: hsl(var(--foreground) / 0.9);
+  font-size: 0.9375rem;
+  line-height: 1.7;
+}
+.app-prose > * + * { margin-top: 1em; }
+.app-prose h1,
+.app-prose h2,
+.app-prose h3,
+.app-prose h4 {
+  color: hsl(var(--foreground));
+  font-weight: 600;
+  line-height: 1.3;
+  margin-top: 1.6em;
+}
+.app-prose h1 { font-size: 1.5rem; }
+.app-prose h2 { font-size: 1.25rem; }
+.app-prose h3 { font-size: 1.0625rem; }
+.app-prose h4 { font-size: 1rem; }
+.app-prose > :first-child { margin-top: 0; }
+.app-prose strong { color: hsl(var(--foreground)); font-weight: 600; }
+.app-prose a { color: hsl(var(--primary)); text-decoration: underline; text-underline-offset: 2px; }
+.app-prose ul,
+.app-prose ol { padding-left: 1.4em; }
+.app-prose ul { list-style: disc; }
+.app-prose ol { list-style: decimal; }
+.app-prose li + li { margin-top: 0.35em; }
+.app-prose blockquote {
+  border-left: 2px solid hsl(var(--border));
+  padding-left: 1em;
+  color: hsl(var(--muted-foreground));
+}
+.app-prose code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.875em;
+  background: hsl(var(--muted));
+  padding: 0.15em 0.4em;
+  border-radius: 0.25rem;
+}
+.app-prose pre {
+  background: hsl(var(--muted) / 0.5);
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.5rem;
+  padding: 0.9rem 1rem;
+  /* Long lines scroll inside the block instead of widening the page. */
+  overflow-x: auto;
+}
+.app-prose pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+.app-prose hr { border-color: hsl(var(--border)); }
+.app-prose table { width: 100%; border-collapse: collapse; font-size: 0.875em; display: block; overflow-x: auto; }
+.app-prose th,
+.app-prose td { border: 1px solid hsl(var(--border)); padding: 0.4em 0.7em; text-align: left; }

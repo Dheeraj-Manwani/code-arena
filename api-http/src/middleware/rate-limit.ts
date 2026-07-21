@@ -102,6 +102,27 @@ export const learnAnswerRateLimiter = rateLimit({
 });
 
 /**
+ * Description image uploads.
+ *
+ * Bounds how fast one creator account can fill the bucket — a stuck retry loop
+ * in an editor is the realistic way that happens, not malice. Generous enough
+ * that pasting a handful of screenshots into a problem statement in one sitting
+ * never trips it.
+ */
+export const imageUploadRateLimiter = rateLimit({
+  ...baseOptions,
+  windowMs: 60 * 1000,
+  limit: 30,
+  keyGenerator: (req: Request) => {
+    const userId = (req as Request & { userId?: number }).userId;
+    if (userId != null) {
+      return `image-upload:user:${userId}`;
+    }
+    return `image-upload:ip:${ipKeyGenerator(req.ip ?? "")}`;
+  },
+});
+
+/**
  * Spreadsheet import (LEARN_PATHS.md §3.9).
  *
  * Much tighter than the answer limiter, because the work per request is much

@@ -45,18 +45,54 @@ export const uploadSpreadsheet = multer({
 }).single("file");
 
 /**
+ * Description images (problem authoring).
+ *
+ * 2 MB because these are screenshots and diagrams inside a problem statement,
+ * not photography — and because the cap is the only thing bounding how much a
+ * creator can push into the bucket per request.
+ *
+ * There is no `fileFilter` by mimetype here on purpose. The client sets that
+ * header, so filtering on it would look like validation while checking nothing;
+ * `upload.service.ts` classifies by magic number instead, which is what
+ * actually decides whether the bytes are an image.
+ */
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+
+export const uploadImageFile = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_IMAGE_BYTES, files: 1, fields: 0 },
+}).single("file");
+
+/**
  * Turns multer's own errors into the standard response envelope.
  *
  * Multer rejects before the route handler runs, so without this an oversized
  * upload escapes as an unhandled `MulterError` and surfaces as a 500 — a client
  * mistake reported as a server fault.
+ *
+ * A factory rather than one shared handler because the two upload routes want
+ * different copy: "that spreadsheet is too big" and "that image is too big"
+ * have different fixes, and a single generic code would make the client guess
+ * which one it was looking at.
  */
-export const handleUploadError: ErrorRequestHandler = (err, _req, res, next) => {
-  if (!(err instanceof multer.MulterError)) return next(err);
+const uploadErrorHandler =
+  (codes: { tooLarge: ApiErrorCode; invalid: ApiErrorCode }): ErrorRequestHandler =>
+  (err, _req, res, next) => {
+    if (!(err instanceof multer.MulterError)) return next(err);
 
-  if (err.code === "LIMIT_FILE_SIZE") {
-    return sendError(res, ApiErrorCode.LEARN_IMPORT_TOO_LARGE, 400);
-  }
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return sendError(res, codes.tooLarge, 400);
+    }
 
-  return sendError(res, ApiErrorCode.LEARN_IMPORT_NO_FILE, 400);
-};
+    return sendError(res, codes.invalid, 400);
+  };
+
+export const handleUploadError = uploadErrorHandler({
+  tooLarge: ApiErrorCode.LEARN_IMPORT_TOO_LARGE,
+  invalid: ApiErrorCode.LEARN_IMPORT_NO_FILE,
+});
+
+export const handleImageUploadError = uploadErrorHandler({
+  tooLarge: ApiErrorCode.UPLOAD_TOO_LARGE,
+  invalid: ApiErrorCode.UPLOAD_NO_FILE,
+});

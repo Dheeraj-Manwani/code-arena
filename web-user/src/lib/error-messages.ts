@@ -45,6 +45,15 @@ const errorMessages = {
   [ApiErrorCode.RUN_EXECUTION_FAILED]:
     "Code execution failed. Check your code or try again.",
 
+  // Image uploads
+  [ApiErrorCode.UPLOAD_NO_FILE]: "Choose an image to upload.",
+  [ApiErrorCode.UPLOAD_TOO_LARGE]: "That image is too large — keep it under 2 MB.",
+  [ApiErrorCode.UPLOAD_UNSUPPORTED_TYPE]:
+    "Only PNG, JPEG, WebP and GIF images can be uploaded.",
+  [ApiErrorCode.UPLOAD_NOT_CONFIGURED]:
+    "Image uploads aren't set up on this server yet.",
+  [ApiErrorCode.UPLOAD_FAILED]: "Couldn't store that image. Please try again.",
+
   // Learn paths
   [ApiErrorCode.LEARN_PATH_NOT_FOUND]: "That learn path isn't available.",
   [ApiErrorCode.LEARN_LESSON_NOT_FOUND]: "That lesson isn't available.",

@@ -10,6 +10,9 @@
     "start": "node dist/index.js",
     "seed": "ts-node-dev prisma/seed.ts",
     "seed:learn": "ts-node-dev prisma/seed-learn.ts",
+    "seed:problems": "ts-node prisma/seed-problems/01-arrays-strings.ts && ts-node prisma/seed-problems/02-two-pointers-sliding-window.ts && ts-node prisma/seed-problems/03-hashing-counting.ts && ts-node prisma/seed-problems/04-binary-search-sorting.ts && ts-node prisma/seed-problems/05-dp-greedy-stack.ts",
+    "seed:problems:verify": "ts-node prisma/seed-problems/verify.ts",
+    "seed:paths": "ts-node prisma/seed-learn/patterns-that-repeat.ts && ts-node prisma/seed-learn/thinking-in-subproblems.ts",
     "judge-boilerplate": "ts-node-dev --inspect --respawn src/util/boilerplate/runJudgeBoilerplate.ts",
     "judge-local": "ts-node src/judge/local/runLocalJudge.ts",
     "judge-images": "bash docker/judge/build.sh",
@@ -24,6 +27,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1090.0",
     "@prisma/client": "5.7.0",
     "axios": "^1.14.0",
     "bcrypt": "^6.0.0",

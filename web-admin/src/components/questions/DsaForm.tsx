@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { MarkdownEditor } from "@/components/common/MarkdownEditor";
 import {
   Select,
   SelectContent,
@@ -299,11 +300,11 @@ export const DsaForm = ({
 
       <div>
         <Label className="arena-label">Problem Description</Label>
-        <Textarea
-          placeholder="Describe the problem clearly..."
+        <MarkdownEditor
+          placeholder="Describe the problem clearly... Markdown is supported."
           value={formData.description}
-          onChange={(e) => {
-            setFormData({ ...formData, description: e.target.value });
+          onChange={(description) => {
+            setFormData({ ...formData, description });
             if (errors.description) {
               const newErrors = { ...errors };
               delete newErrors.description;
@@ -311,16 +312,8 @@ export const DsaForm = ({
             }
           }}
           disabled={isSubmitting}
-          className={cn(
-            "arena-input w-full min-h-[200px] resize-y",
-            errors.description && "border-destructive"
-          )}
+          error={errors.description}
         />
-        {errors.description && (
-          <p className="text-sm text-destructive mt-1">
-            {errors.description}
-          </p>
-        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

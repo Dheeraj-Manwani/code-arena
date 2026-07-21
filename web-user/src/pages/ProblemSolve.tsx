@@ -4,7 +4,7 @@ import { toast } from "react-hot-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Loader } from "@/components/Loader";
-import DSAQuestion from "@/components/contest/DSAQuestion";
+import DSAQuestion, { type SolveSideTab } from "@/components/contest/DSAQuestion";
 import PracticeSubmissionsPanel from "@/components/practice/PracticeSubmissionsPanel";
 import {
   useProblemQuery,
@@ -26,8 +26,7 @@ import { contestWebSocket } from "@/lib/websocket";
 import { paths } from "@/lib/paths";
 import { SolvePathHeader, NextQuestionPanel } from "@/components/learn/SolvePathContext";
 import { useNextQuestionQuery } from "@/queries/learn.queries";
-import { ArrowLeft, History, X } from "lucide-react";
-import { Allotment } from "allotment";
+import { ArrowLeft } from "lucide-react";
 
 const VERDICT_TOAST: Record<Exclude<SubmissionStatus, "pending">, string> = {
   accepted: "Accepted — all tests passed!",
@@ -47,7 +46,12 @@ const SolveSurface = ({ slug, problem, draft }: SolveSurfaceProps) => {
   const queryClient = useQueryClient();
   const authUserId = useAuthStore((state) => state.user?.id ?? null);
 
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  /**
+   * Which view the left pane shows. Lives here rather than in `DSAQuestion`
+   * because submitting is what should pull Submissions forward, and that
+   * happens in this component.
+   */
+  const [sideTab, setSideTab] = useState<SolveSideTab>("description");
 
   // Seeded in the initializer rather than an effect: the draft is already
   // resolved, so there is nothing to sync after mount and no way for a refetch
@@ -187,7 +191,8 @@ const SolveSurface = ({ slug, problem, draft }: SolveSurfaceProps) => {
     try {
       await submitMutation.mutateAsync({ code: trimmed, language });
       toast("Submitted — judging…");
-      setIsHistoryOpen(true);
+      // The verdict lands here, so show the tab it lands on.
+      setSideTab("submissions");
     } catch {
       toast.error("Unable to submit, please try again.");
     }
@@ -203,6 +208,12 @@ const SolveSurface = ({ slug, problem, draft }: SolveSurfaceProps) => {
       onSubmit={handleSubmit}
       isSubmitting={submitMutation.isPending}
       submitLabel="Submit"
+      // Submissions live beside Description rather than in a slide-out pane
+      // that stole width from the editor whenever it was open.
+      submissionsPanel={<PracticeSubmissionsPanel submissions={submissions} />}
+      submissionCount={submissions.length}
+      activeSideTab={sideTab}
+      onSideTabChange={setSideTab}
     />
   );
 
@@ -214,67 +225,20 @@ const SolveSurface = ({ slug, problem, draft }: SolveSurfaceProps) => {
 
       {/* No countdown and no leave-confirmation prompt: practice has no deadline,
           and leaving mid-problem is normal (§4.6). */}
-      <header className="flex shrink-0 items-center justify-between border-b border-border bg-card px-4 py-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <Link to={paths.problem(slug)}>
-            <Button variant="ghost" size="sm" className="gap-2">
-              <ArrowLeft className="h-4 w-4" />
-              Back
-            </Button>
-          </Link>
-          <span className="truncate font-mono text-sm font-semibold text-foreground">
-            {problem.title}
-          </span>
-        </div>
-
-        <Button
-          variant={isHistoryOpen ? "secondary" : "ghost"}
-          size="sm"
-          className="gap-2"
-          onClick={() => setIsHistoryOpen((prev) => !prev)}
-        >
-          <History className="h-4 w-4" />
-          Submissions
-          {submissions.length > 0 && (
-            <span className="text-xs text-muted-foreground">({submissions.length})</span>
-          )}
-        </Button>
+      <header className="flex shrink-0 items-center gap-3 border-b border-border bg-card px-4 py-3">
+        <Link to={paths.problem(slug)}>
+          <Button variant="ghost" size="sm" className="gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Button>
+        </Link>
+        <span className="truncate font-mono text-sm font-semibold text-foreground">
+          {problem.title}
+        </span>
       </header>
 
       <div className="min-h-0 flex-1 overflow-hidden">
-        {isHistoryOpen ? (
-          <Allotment
-            defaultSizes={[75, 25]}
-            minSize={200}
-            proportionalLayout
-            className="h-full"
-          >
-            <Allotment.Pane minSize={300} preferredSize="75%">
-              <main className="flex h-full min-h-0 flex-col overflow-hidden">{editor}</main>
-            </Allotment.Pane>
-            <Allotment.Pane minSize={220} preferredSize="25%">
-              <div className="flex h-full flex-col border-l border-border bg-card/95">
-                <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
-                  <span className="font-mono text-sm font-semibold">Submissions</span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => setIsHistoryOpen(false)}
-                    aria-label="Close submissions"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-                <div className="min-h-0 flex-1 overflow-auto p-3">
-                  <PracticeSubmissionsPanel submissions={submissions} />
-                </div>
-              </div>
-            </Allotment.Pane>
-          </Allotment>
-        ) : (
-          <main className="flex h-full min-h-0 flex-col overflow-hidden">{editor}</main>
-        )}
+        <main className="flex h-full min-h-0 flex-col overflow-hidden">{editor}</main>
       </div>
 
       {showNextPanel && nextQuestion && pathSlug && (

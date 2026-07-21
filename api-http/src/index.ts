@@ -18,6 +18,7 @@ import attemptRoutes from "./routes/attempt.routes";
 import runRoutes from "./routes/run.routes";
 import adminLearnRoutes from "./routes/adminLearn.routes";
 import learnRoutes from "./routes/learn.routes";
+import uploadRoutes from "./routes/upload.routes";
 import { errorHandler } from "./middleware/error-handler";
 import { configurePassport, passport } from "./auth/passport";
 import { attachRealtime } from "./realtime/server";
@@ -67,6 +68,7 @@ app.use("/api/attempts", attemptRoutes);
 app.use("/api/run", runRoutes);
 app.use("/api/admin/learn", adminLearnRoutes);
 app.use("/api/learn", learnRoutes);
+app.use("/api/uploads", uploadRoutes);
 
 app.use(errorHandler);
 
