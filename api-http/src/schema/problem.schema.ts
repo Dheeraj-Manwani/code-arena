@@ -25,6 +25,46 @@ export type ProblemStatusFilter = z.infer<typeof ProblemStatusFilterEnum>;
 /** Catalogue page size cap — an unbounded `limit` is a trivial DoS. */
 export const MAX_CATALOGUE_LIMIT = 50;
 
+/**
+ * A repeatable enum query param: `?difficulty=easy&difficulty=hard`, or a single
+ * comma-separated `?difficulty=easy,hard`.
+ *
+ * Express gives a bare string for one occurrence and an array for several, so
+ * both shapes have to be accepted — which also keeps every existing
+ * single-value caller working unchanged.
+ *
+ * An unrecognised member is **rejected**, not dropped, matching what `sortBy`
+ * already does here and what the §4.5 tests assert by name. Silently ignoring
+ * it would answer a question the caller didn't ask: someone filtering on a
+ * misspelled difficulty would get the unfiltered catalogue back and no
+ * indication that their filter did nothing.
+ */
+const repeatableEnum = <T extends string>(values: readonly T[]) =>
+  z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .transform((raw, ctx): T[] | undefined => {
+      if (raw == null) return undefined;
+
+      const list = (Array.isArray(raw) ? raw : raw.split(","))
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+      for (const item of list) {
+        if (!(values as readonly string[]).includes(item)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Expected one of ${values.join(" | ")}, received '${item}'`,
+          });
+          return z.NEVER;
+        }
+      }
+
+      // Dedupe: a repeated value would otherwise widen an `in` clause for nothing.
+      const unique = [...new Set(list)] as T[];
+      return unique.length > 0 ? unique : undefined;
+    });
+
 /** Query for the public practice catalogue (`GET /api/problems`). */
 export const GetProblemsSchema = z.object({
   page: z
@@ -46,7 +86,8 @@ export const GetProblemsSchema = z.object({
     .optional()
     .transform((v) => v?.trim() || undefined),
 
-  difficulty: DifficultyEnum.optional(),
+  /** Repeatable — the catalogue sidebar filters difficulty with checkboxes. */
+  difficulty: repeatableEnum(DifficultyEnum.options),
 
   /** Repeatable `?tags=dp&tags=graph`, or a single comma-separated value. */
   tags: z
@@ -60,7 +101,7 @@ export const GetProblemsSchema = z.object({
       return list.length > 0 ? list : undefined;
     }),
 
-  status: ProblemStatusFilterEnum.optional(),
+  status: repeatableEnum(ProblemStatusFilterEnum.options),
 
   sortBy: ProblemSortEnum.default("newest"),
 });

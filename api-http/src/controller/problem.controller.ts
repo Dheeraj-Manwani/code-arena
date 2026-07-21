@@ -14,10 +14,16 @@ export const getPracticeProblems = async (req: AuthRequest, res: Response) => {
   return sendSuccess(res, result, 200);
 };
 
-/** GET /api/problems/tags — distinct tags, for the catalogue filter. */
+/** GET /api/problems/tags — distinct tags with counts, for the catalogue filter. */
 export const getPracticeTags = async (_req: AuthRequest, res: Response) => {
   const tags = await problemService.getPracticeTags();
   return sendSuccess(res, tags, 200);
+};
+
+/** GET /api/problems/progress — the caller's solved/total across the catalogue. */
+export const getPracticeProgress = async (req: AuthRequest, res: Response) => {
+  const progress = await problemService.getPracticeProgress(req.userId);
+  return sendSuccess(res, progress, 200);
 };
 
 /** GET /api/problems/:slug — a single practiceable problem. */

@@ -42,6 +42,53 @@ export const learnMutations = {
   },
 };
 
+/** What the server did with an uploaded sheet. Mirrors `ImportSummary` in api-http. */
+export interface ImportSummary {
+  completed: number;
+  cleared: number;
+  unchanged: number;
+  /** Verified completions the sheet tried to un-tick. Refused by design. */
+  skippedVerified: number;
+  /** MCQs the sheet tried to tick. Refused by design. */
+  skippedMcq: number;
+  unknownRows: number;
+  malformedRows: number;
+}
+
+/** The spreadsheet round trip (§3.9). */
+export const learnWorkbook = {
+  /**
+   * Downloads the progress sheet.
+   *
+   * `responseType: "blob"` matters: the default JSON parse would corrupt the
+   * binary body, and the resulting file would fail to open with no clue why.
+   */
+  exportPath: async (slug: string): Promise<{ blob: Blob; filename: string }> => {
+    const response = await api.get(`/api/learn/paths/${slug}/export`, {
+      responseType: "blob",
+    });
+
+    // Prefer the server's filename, but never trust it as a path: strip any
+    // directory separators a malformed header could smuggle in before it
+    // reaches a download attribute.
+    const disposition = String(response.headers["content-disposition"] ?? "");
+    const match = /filename="?([^"]+)"?/.exec(disposition);
+    const filename = (match?.[1] ?? `${slug}-progress.xlsx`).replace(/[/\\]/g, "");
+
+    return { blob: response.data as Blob, filename };
+  },
+
+  importPath: async (slug: string, file: File): Promise<ImportSummary> => {
+    const form = new FormData();
+    form.append("file", file);
+
+    // Content-Type is deliberately unset: the browser has to generate it so it
+    // can append the multipart boundary. Setting it by hand omits the boundary
+    // and multer rejects the body.
+    return (await api.post(`/api/learn/paths/${slug}/import`, form)).data.data;
+  },
+};
+
 /** Momentum loop (Phase 6). */
 export interface Celebrations {
   modules: Array<{

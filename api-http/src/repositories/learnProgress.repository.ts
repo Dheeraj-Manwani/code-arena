@@ -609,6 +609,60 @@ export const unlockModule = async (userId: number, moduleId: number): Promise<vo
   });
 };
 
+/**
+ * Applies a batch of self-marks and un-marks in one transaction, then rolls up
+ * once (the spreadsheet import in §3.9).
+ *
+ * Not a loop over `recordQuestionCompletion` / `removeSelfMarkedCompletion`:
+ * those each open their own transaction and recount the entire path, so a
+ * 474-row import would run 474 full rollups and leave the path visibly
+ * half-imported the whole way through. One transaction also means a failure
+ * partway leaves the user exactly where they started, which matters far more
+ * for a bulk overwrite than for a single tick.
+ *
+ * The verified rule from §3 D3 is enforced here rather than trusted from the
+ * caller: `deleteMany` is scoped to `source: 'self_marked'`, so a sheet asking
+ * to clear a verified completion cannot do it however the file was edited.
+ * `createMany … skipDuplicates` likewise leaves an existing row's source alone,
+ * so importing never downgrades a verified completion to a self-marked one.
+ */
+export const applyProgressImport = async (
+  userId: number,
+  pathId: number,
+  complete: number[],
+  clear: number[],
+): Promise<void> => {
+  if (complete.length === 0 && clear.length === 0) return;
+
+  await prisma.$transaction(async (tx) => {
+    // One path-scoped lock rather than the per-question locks the single-question
+    // writers take: this touches many questions at once, and taking them
+    // one-by-one against a concurrent verdict fan-out is a deadlock waiting to
+    // happen. Negated pathId keeps this lock space distinct from the
+    // (userId, questionId) pairs those writers use.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${userId}::int, ${-pathId}::int)`;
+
+    if (clear.length > 0) {
+      await tx.userLearnQuestionProgress.deleteMany({
+        where: { userId, questionId: { in: clear }, source: "self_marked" },
+      });
+    }
+
+    if (complete.length > 0) {
+      await tx.userLearnQuestionProgress.createMany({
+        data: complete.map((questionId) => ({
+          userId,
+          questionId,
+          source: "self_marked" as CompletionSource,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    await rollup(tx, userId, pathId);
+  });
+};
+
 /** Wipes one path's progress for one user (the Reset control in §3.2). */
 export const resetPathProgress = async (userId: number, pathId: number): Promise<void> => {
   await prisma.$transaction(async (tx) => {

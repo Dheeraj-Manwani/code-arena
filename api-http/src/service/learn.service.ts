@@ -8,6 +8,13 @@ import {
   LearnQuestionNotFoundError,
 } from "../errors/learn.errors";
 import { AppError } from "../errors/app-error";
+import { env } from "../config/env";
+import {
+  buildProgressWorkbook,
+  parseProgressWorkbook,
+  type WorkbookQuestion,
+} from "./learnWorkbook";
+import type { CompletionSource } from "@prisma/client";
 
 /**
  * The learner view of `/learn` (LEARN_PATHS.md Phase 3).
@@ -308,6 +315,191 @@ export const resetPath = async (slug: string, userId: number) => {
 
   await progressRepo.resetPathProgress(userId, path.id);
   return { reset: true };
+};
+
+// ---------------------------------------------------------------------------
+// Spreadsheet round trip (§3.9)
+// ---------------------------------------------------------------------------
+
+/**
+ * Flattens a path into one row per question, in the order they are studied.
+ *
+ * Shared by both directions so the exported column set and the imported one can
+ * never drift apart.
+ */
+const flattenForWorkbook = (
+  path: NonNullable<Awaited<ReturnType<typeof catalogue.getPublishedPathBySlug>>>,
+  completions: Map<number, CompletionSource>,
+): WorkbookQuestion[] =>
+  path.modules.flatMap((learnModule) =>
+    learnModule.lessons.flatMap((lesson) =>
+      lesson.questions.map((question) => {
+        const source = completions.get(question.id) ?? null;
+
+        return {
+          questionId: question.id,
+          moduleTitle: learnModule.title,
+          lessonTitle: lesson.title,
+          title:
+            question.problem?.title ??
+            question.mcq?.questionText ??
+            `Question ${question.id}`,
+          kind: question.kind,
+          difficulty: question.problem?.difficulty ?? null,
+          // MCQs are answered inside the lesson, so the deep link is the lesson,
+          // not a solve page that doesn't exist for them.
+          solveUrl: question.problem
+            ? `${env.FRONTEND_URL}/problems/${question.problem.slug}/solve?path=${path.slug}&question=${question.id}`
+            : `${env.FRONTEND_URL}/learn/${path.slug}/lessons/${lesson.id}`,
+          isComplete: source !== null,
+          source,
+        } satisfies WorkbookQuestion;
+      }),
+    ),
+  );
+
+/** The .xlsx a learner downloads, as a buffer plus the filename to serve it as. */
+export const exportPathProgress = async (slug: string, userId: number) => {
+  // Uncached, unlike `getPath`: an export is the artefact someone is about to
+  // edit and upload back, so a minute-stale question set could hand them rows
+  // for questions a curator has just removed.
+  const path = await catalogue.getPublishedPathBySlug(slug);
+  if (!path) throw new LearnPathNotFoundError();
+
+  await progressRepo.backfillPathProgressSafe(userId, path.id);
+
+  const questionIds = path.modules
+    .flatMap((m) => m.lessons)
+    .flatMap((l) => l.questions)
+    .map((q) => q.id);
+
+  const completions = await progressRepo.getQuestionProgress(userId, questionIds);
+
+  const buffer = await buildProgressWorkbook({
+    slug: path.slug,
+    title: path.title,
+    questions: flattenForWorkbook(path, completions),
+  });
+
+  return { buffer, filename: `${path.slug}-progress.xlsx` };
+};
+
+export interface ImportSummary {
+  /** Newly self-marked. */
+  completed: number;
+  /** Self-marks removed. */
+  cleared: number;
+  /** Already in the requested state — the sheet asked for nothing. */
+  unchanged: number;
+  /** Verified completions the sheet tried to un-tick. Refused (§3 D3). */
+  skippedVerified: number;
+  /** MCQs the sheet tried to tick. Refused — MCQs are earned, not claimed. */
+  skippedMcq: number;
+  /** Rows whose question id is not in this path (wrong file, or stale). */
+  unknownRows: number;
+  /** Rows whose Completed cell was neither YES nor NO. */
+  malformedRows: number;
+}
+
+/**
+ * Applies an edited sheet to the caller's own progress.
+ *
+ * Every rule the interactive controls enforce is re-enforced here, because a
+ * spreadsheet is user input and nothing about having come from our own export
+ * makes it trustworthy:
+ *
+ *  - **Verified stays.** A row asking to clear a verified completion is counted
+ *    and ignored (§3 D3) — that completion is backed by a real accepted
+ *    submission, and a file edit cannot retract it.
+ *  - **MCQs can't be claimed.** Same rule `selfMarkQuestion` applies: an MCQ
+ *    takes seconds to answer, so a hand-tick would exist only to inflate the
+ *    number.
+ *  - **Foreign ids are dropped.** Ids are matched against *this* path's question
+ *    set, so uploading another path's sheet (or a hand-written one) can never
+ *    reach a question the user isn't looking at.
+ *
+ * The summary counts every refusal rather than silently succeeding: someone who
+ * ticked 40 boxes and got 12 needs to be told which rule ate the other 28.
+ */
+export const importPathProgress = async (
+  slug: string,
+  userId: number,
+  file: Buffer,
+): Promise<ImportSummary> => {
+  const path = await catalogue.getPublishedPathBySlug(slug);
+  if (!path) throw new LearnPathNotFoundError();
+
+  let parsed;
+  try {
+    parsed = await parseProgressWorkbook(file);
+  } catch {
+    // ExcelJS throws a variety of low-level errors on a file that isn't a
+    // workbook; none of them are worth showing a user verbatim.
+    throw new AppError(
+      "That file couldn't be read as a spreadsheet. Export a fresh copy and edit that.",
+      400,
+      "LEARN_IMPORT_UNREADABLE",
+    );
+  }
+
+  await progressRepo.backfillPathProgressSafe(userId, path.id);
+
+  const questions = new Map(
+    path.modules
+      .flatMap((m) => m.lessons)
+      .flatMap((l) => l.questions)
+      .map((q) => [q.id, q]),
+  );
+
+  const completions = await progressRepo.getQuestionProgress(userId, [...questions.keys()]);
+
+  const summary: ImportSummary = {
+    completed: 0,
+    cleared: 0,
+    unchanged: 0,
+    skippedVerified: 0,
+    skippedMcq: 0,
+    unknownRows: 0,
+    malformedRows: parsed.malformedRows.length,
+  };
+
+  const toComplete: number[] = [];
+  const toClear: number[] = [];
+
+  for (const row of parsed.rows) {
+    const question = questions.get(row.questionId);
+    if (!question) {
+      summary.unknownRows++;
+      continue;
+    }
+
+    const source = completions.get(row.questionId) ?? null;
+
+    if (row.completed) {
+      if (source !== null) {
+        summary.unchanged++;
+      } else if (question.kind !== "problem") {
+        summary.skippedMcq++;
+      } else {
+        toComplete.push(row.questionId);
+        summary.completed++;
+      }
+      continue;
+    }
+
+    if (source === null) {
+      summary.unchanged++;
+    } else if (source === "verified") {
+      summary.skippedVerified++;
+    } else {
+      toClear.push(row.questionId);
+      summary.cleared++;
+    }
+  }
+
+  await progressRepo.applyProgressImport(userId, path.id, toComplete, toClear);
+
+  return summary;
 };
 
 // ---------------------------------------------------------------------------

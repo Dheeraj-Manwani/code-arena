@@ -9,8 +9,10 @@ import type {
   CatalogueResponse,
   PracticeDraft,
   PracticeProblem,
+  PracticeProgress,
   PracticeSubmission,
   ProblemFilters,
+  ProblemTagCount,
 } from "@/schema/practice.schema";
 
 export const useProblemsQuery = (filters: ProblemFilters) => {
@@ -30,12 +32,25 @@ export const useProblemsQuery = (filters: ProblemFilters) => {
 export const useProblemTagsQuery = () => {
   return useQuery({
     queryKey: ["problem-tags"],
-    queryFn: async (): Promise<string[]> => {
+    queryFn: async (): Promise<ProblemTagCount[]> => {
       const { data } = await practiceApi.getTags();
       return data;
     },
     // The tag set barely moves; no need to refetch it on every filter change.
     staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+};
+
+/** Catalogue-wide solved/total. Drives the progress bar, so it ignores filters. */
+export const useProblemProgressQuery = () => {
+  return useQuery({
+    queryKey: ["problem-progress"],
+    queryFn: async (): Promise<PracticeProgress> => {
+      const { data } = await practiceApi.getProgress();
+      return data;
+    },
+    staleTime: 60 * 1000,
     retry: false,
   });
 };

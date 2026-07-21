@@ -16,10 +16,11 @@ router.get("/dsa/:problemId", authenticateToken, requireCreator, problemControll
 router.patch("/mcq/:questionId", authenticateToken, requireCreator, problemController.updateMcqQuestion);
 router.patch("/dsa/:problemId", authenticateToken, requireCreator, problemController.updateDsaProblem);
 
-// Public practice catalogue. `/tags` is declared before `/:slug` so the literal
-// segment isn't swallowed by the param route.
+// Public practice catalogue. `/tags` and `/progress` are declared before
+// `/:slug` so the literal segments aren't swallowed by the param route.
 router.get("/", authenticateToken, problemController.getPracticeProblems);
 router.get("/tags", authenticateToken, problemController.getPracticeTags);
+router.get("/progress", authenticateToken, problemController.getPracticeProgress);
 router.get("/:slug", authenticateToken, problemController.getPracticeProblemBySlug);
 
 export default router;

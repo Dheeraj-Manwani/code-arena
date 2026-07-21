@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs",
+    "dev:separate": "node scripts/dev.mjs --separate",
     "dev:api": "node scripts/dev.mjs api",
     "dev:web": "node scripts/dev.mjs web",
     "dev:admin": "node scripts/dev.mjs admin",

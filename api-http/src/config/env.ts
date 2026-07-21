@@ -16,11 +16,13 @@ const envSchema = z.object({
   ACCESS_TOKEN_SECRET: z.string().min(1, "ACCESS_TOKEN_SECRET is required (JWT signing key)"),
   REFRESH_TOKEN_SECRET: z.string().min(1, "REFRESH_TOKEN_SECRET is required (JWT signing key)"),
 
-  // Judge0 — the judge pipeline now runs in-process, so api-http needs these
-  // (Economy Service Phase 1/2). Previously they lived only in judge-worker.
-  JUDGE0_API_URL: z.string().min(1, "JUDGE0_API_URL is required (Judge0 RapidAPI base URL)"),
-  JUDGE0_RAPIDAPI_HOST: z.string().min(1, "JUDGE0_RAPIDAPI_HOST is required"),
-  JUDGE0_RAPIDAPI_KEY: z.string().min(1, "JUDGE0_RAPIDAPI_KEY is required"),
+  // Judge0 — required unless JUDGE_BACKEND=local (enforced by the superRefine
+  // below; shadow mode still runs Judge0 as the authoritative backend). A
+  // deployment on the local container backend must not be forced to hold a
+  // RapidAPI key it never uses.
+  JUDGE0_API_URL: z.string().min(1).optional(),
+  JUDGE0_RAPIDAPI_HOST: z.string().min(1).optional(),
+  JUDGE0_RAPIDAPI_KEY: z.string().min(1).optional(),
 
   // Optional — sensible defaults / used only by specific features.
   NODE_ENV: z.string().default("development"),
@@ -39,13 +41,54 @@ const envSchema = z.object({
   /** Where the callback sends the browser once the refresh cookie is set. */
   FRONTEND_URL: z.string().default("http://localhost:5173"),
 
+  // Which execution backend runs submissions (SELF_HOSTED_JUDGE.md).
+  //   judge0 — RapidAPI (needs the JUDGE0_* vars)
+  //   local  — container per submission (needs Docker + judge images)
+  //   shadow — judge0 authoritative, local run alongside and compared
+  // Rejecting an unimplemented value at boot beats discovering it when the
+  // first submission of a contest fails to judge.
+  JUDGE_BACKEND: z.enum(["judge0", "local", "shadow"]).default("judge0"),
+
+  // Shadow-mode caps (Phase 5). Small on purpose — see jobs/constants.ts.
+  SHADOW_MAX_CONCURRENCY: z.coerce.number().int().positive().default(2),
+  SHADOW_MAX_QUEUED: z.coerce.number().int().positive().default(32),
+
+  // Local backend tuning (SELF_HOSTED_JUDGE.md Phase 3). Defaults in
+  // jobs/constants.ts; these only validate that overrides are sane.
+  LOCAL_COMPILE_TIMEOUT_S: z.coerce.number().int().positive().default(10),
+  LOCAL_RUN_TIMEOUT_S: z.coerce.number().int().positive().default(5),
+  LOCAL_WALL_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
+  LOCAL_OUTPUT_CAP_BYTES: z.coerce.number().int().positive().default(1048576),
+
   // In-process judge tuning knobs (Economy Service Phase 6).
   WORKER_CONCURRENCY: z.coerce.number().int().positive().default(4), // parallel judgings
   JUDGE_RATE_MAX: z.coerce.number().int().positive().default(10), // Judge0 calls per window
   JUDGE_RATE_WINDOW_MS: z.coerce.number().int().positive().default(1000),
   RUN_MAX_CONCURRENCY: z.coerce.number().int().positive().default(8), // concurrent /api/run
   RUN_TIMEOUT_MS: z.coerce.number().int().positive().default(35000),
-});
+})
+  /**
+   * Judge0 credentials are required only by the Judge0 backend.
+   *
+   * Checked here rather than as field-level `.min(1)` so the requirement can
+   * depend on JUDGE_BACKEND. Without this, switching to the local backend would
+   * still demand a RapidAPI key — the exact coupling this migration removes.
+   */
+  .superRefine((cfg, ctx) => {
+    // Shadow mode runs Judge0 as the authoritative backend, so it needs the
+    // credentials just as much as plain `judge0` does.
+    if (cfg.JUDGE_BACKEND === "local") return;
+
+    for (const key of ["JUDGE0_API_URL", "JUDGE0_RAPIDAPI_HOST", "JUDGE0_RAPIDAPI_KEY"] as const) {
+      if (!cfg[key]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: `${key} is required when JUDGE_BACKEND=${cfg.JUDGE_BACKEND}`,
+        });
+      }
+    }
+  });
 
 export type Env = z.infer<typeof envSchema>;
 

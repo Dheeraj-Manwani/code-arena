@@ -26,12 +26,21 @@ export function targetSubmissionId(target: JudgeTarget): number {
     : target.practiceSubmissionId;
 }
 
+/**
+ * The judge-side language vocabulary.
+ *
+ * Distinct from `schema/language.schema.ts`'s `Language`, which is the app-side
+ * spelling ("js" there, "javascript" here). `LANGUAGE_TO_JUDGE_JOB` in
+ * `jobs/constants.ts` is the one place that translates between them.
+ */
+export type JudgeLanguage = "cpp" | "python" | "javascript" | "java";
+
 export interface JudgeJob {
   jobId: string;
   target: JudgeTarget;
   userId: number;
   problemId: number;
-  language: "cpp" | "python" | "javascript" | "java";
+  language: JudgeLanguage;
   sourceCode: string;
   totalTestCases: number;
   totalPoints: number;

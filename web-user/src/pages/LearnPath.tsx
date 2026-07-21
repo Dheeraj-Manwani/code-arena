@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { motion } from "motion/react";
-import { ArrowLeft, ArrowRight, PartyPopper } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Download,
+  Loader2,
+  PartyPopper,
+  RotateCcw,
+  Upload,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,12 +18,21 @@ import { pageVariants } from "@/lib/animations";
 import { ProgressRing } from "@/components/learn/ProgressRing";
 import { ModuleAccordion } from "@/components/learn/ModuleAccordion";
 import { CelebrationHost } from "@/components/learn/CelebrationHost";
+import ResetPathDialog from "@/components/learn/ResetPathDialog";
+import ImportProgressDialog from "@/components/learn/ImportProgressDialog";
 import {
   useLearnPathQuery,
   useSelfMarkMutation,
   useUnmarkMutation,
   useUnlockModuleMutation,
+  useResetPathMutation,
+  useExportPathMutation,
+  useImportPathMutation,
 } from "@/queries/learn.queries";
+import {
+  usePathCompleteConfetti,
+  forgetPathCelebration,
+} from "@/hooks/use-path-complete-confetti";
 import type { LearnQuestion } from "@/schema/learn.schema";
 
 /**
@@ -38,8 +55,30 @@ const LearnPath = () => {
   const selfMark = useSelfMarkMutation(slug);
   const unmark = useUnmarkMutation(slug);
   const unlockModule = useUnlockModuleMutation(slug);
+  const resetPath = useResetPathMutation(slug);
+
+  const exportPath = useExportPathMutation(slug);
+  const importPath = useImportPathMutation(slug);
 
   const [pendingQuestionId, setPendingQuestionId] = useState<number | null>(null);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+
+  const confirmReset = () => {
+    if (!slug) return;
+    resetPath.mutate(slug, {
+      onSuccess: () => {
+        setResetOpen(false);
+        // Re-arm the auto-expand: `current` has moved back to the first
+        // unfinished question, and leaving `seeded` true would strand the user
+        // looking at whichever topic they had open before.
+        setSeeded(false);
+        // Re-arm the celebration too — someone redoing a path deliberately
+        // should get the same payoff at the end of it.
+        forgetPathCelebration(slug);
+      },
+    });
+  };
 
   const toggleSelfMark = (question: LearnQuestion) => {
     // A verified completion has no checkbox, so reaching here means the row is
@@ -48,6 +87,12 @@ const LearnPath = () => {
     const mutation = question.isComplete ? unmark : selfMark;
     mutation.mutate(question.id, { onSettled: () => setPendingQuestionId(null) });
   };
+
+  const isFinished = Boolean(
+    path && path.totalQuestions > 0 && path.completedQuestions >= path.totalQuestions,
+  );
+
+  usePathCompleteConfetti(slug, isFinished);
 
   const currentModuleSlug = path?.current?.moduleSlug ?? null;
 
@@ -98,8 +143,6 @@ const LearnPath = () => {
     update(next);
   };
 
-  const isFinished = path.totalQuestions > 0 && path.completedQuestions >= path.totalQuestions;
-
   return (
     <motion.div
       variants={pageVariants}
@@ -146,7 +189,58 @@ const LearnPath = () => {
               )}
             </p>
           </div>
+
+          <div className="flex shrink-0 items-center gap-1 self-start">
+            {/* Export is offered on an untouched path too: the sheet is also a
+                way to plan and tick off work, not only to back up progress. */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => exportPath.mutate()}
+              disabled={exportPath.isPending}
+              className="gap-1.5 text-muted-foreground hover:text-foreground"
+              title="Download your progress as a spreadsheet"
+            >
+              {exportPath.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5" />
+              )}
+              <span className="hidden sm:inline">Export</span>
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setImportOpen(true)}
+              className="gap-1.5 text-muted-foreground hover:text-foreground"
+              title="Apply an edited spreadsheet"
+            >
+              <Upload className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Import</span>
+            </Button>
+
+            {/* Only offer it once there is something to reset — an empty path
+                gives the control nothing to do but look alarming. */}
+            {path.completedQuestions > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setResetOpen(true)}
+                className="gap-1.5 text-muted-foreground hover:text-foreground"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Reset</span>
+              </Button>
+            )}
+          </div>
         </div>
+
+        {exportPath.isError && (
+          <p className="mt-3 text-xs text-destructive">
+            Couldn't build your spreadsheet. Please try again.
+          </p>
+        )}
 
         {/* §3.8: a user opening a path they already have history in must be told
             why the bar isn't empty, or a pre-filled ring reads as a bug. */}
@@ -198,6 +292,32 @@ const LearnPath = () => {
         pathCompleted={path.completedQuestions}
         pathTotal={path.totalQuestions}
         nextModuleTitle={path.modules.find((m) => !m.isComplete)?.title ?? null}
+      />
+
+      <ImportProgressDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onConfirm={(file) => importPath.mutate(file)}
+        pathTitle={path.title}
+        isImporting={importPath.isPending}
+        isError={importPath.isError}
+        summary={importPath.data ?? null}
+        // Clears the last run's report so reopening the dialog starts at the
+        // file picker rather than at a stale summary.
+        onDone={() => importPath.reset()}
+      />
+
+      <ResetPathDialog
+        open={resetOpen}
+        onOpenChange={(open) => {
+          if (!resetPath.isPending) setResetOpen(open);
+        }}
+        onConfirm={confirmReset}
+        pathTitle={path.title}
+        selfMarkedCount={path.completedQuestions - path.verifiedQuestions}
+        verifiedCount={path.verifiedQuestions}
+        isResetting={resetPath.isPending}
+        isError={resetPath.isError}
       />
 
       <div className="space-y-3">

@@ -8,6 +8,7 @@ import {
   LearnQuestionNotFoundError,
   LearnPathNotFoundError,
 } from "../errors/learn.errors";
+import { AppError } from "../errors/app-error";
 
 export const getGallery = async (req: AuthRequest, res: Response) =>
   sendSuccess(res, await learnService.getGallery(req.userId));
@@ -91,3 +92,51 @@ export const getNextQuestion = async (req: AuthRequest, res: Response) =>
       req.userId,
     ),
   );
+
+/**
+ * GET /api/learn/paths/:slug/export — the progress spreadsheet.
+ *
+ * Sends a raw buffer rather than going through `sendSuccess`: this is a file
+ * download, so wrapping it in the `{ success, data }` envelope would hand the
+ * browser JSON to save as .xlsx.
+ */
+export const exportPathProgress = async (req: AuthRequest, res: Response) => {
+  const { buffer, filename } = await learnService.exportPathProgress(
+    String(req.params.slug),
+    req.userId,
+  );
+
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+  // The filename is built from a path slug, so it has no quotes or newlines to
+  // escape — but it is still sent as a quoted string so a future slug rule
+  // permitting spaces can't split the header.
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  // Progress is per-user; a shared cache must never serve one learner's sheet
+  // to another.
+  res.setHeader("Cache-Control", "private, no-store");
+
+  return res.send(buffer);
+};
+
+/** POST /api/learn/paths/:slug/import — apply an edited spreadsheet. */
+export const importPathProgress = async (req: AuthRequest, res: Response) => {
+  if (!req.file?.buffer?.length) {
+    throw new AppError(
+      "Attach the spreadsheet you exported, as a .xlsx file.",
+      400,
+      "LEARN_IMPORT_NO_FILE",
+    );
+  }
+
+  return sendSuccess(
+    res,
+    await learnService.importPathProgress(
+      String(req.params.slug),
+      req.userId,
+      req.file.buffer,
+    ),
+  );
+};

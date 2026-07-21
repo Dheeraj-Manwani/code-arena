@@ -39,6 +39,11 @@ export const getPracticeTags = async () => {
   return await problemRepo.getPracticeTags(new Date());
 };
 
+/** Catalogue-wide solved/total for the caller, for the progress bar. */
+export const getPracticeProgress = async (userId: number) => {
+  return await problemRepo.getPracticeProgress(userId, new Date());
+};
+
 /**
  * A practiceable problem by slug. Returns only non-hidden test cases, and
  * derives the editor boilerplate from the stored signature (never stored).

@@ -100,3 +100,25 @@ export const learnAnswerRateLimiter = rateLimit({
     return `learn-answer:ip:${ipKeyGenerator(req.ip ?? "")}`;
   },
 });
+
+/**
+ * Spreadsheet import (LEARN_PATHS.md §3.9).
+ *
+ * Much tighter than the answer limiter, because the work per request is much
+ * larger: each one buffers a file, parses a workbook, and recounts an entire
+ * path inside a transaction. Importing is a deliberate, occasional act — a
+ * learner doing it more than a handful of times a minute is a stuck retry loop,
+ * not a use case.
+ */
+export const learnImportRateLimiter = rateLimit({
+  ...baseOptions,
+  windowMs: 60 * 1000,
+  limit: 6,
+  keyGenerator: (req: Request) => {
+    const userId = (req as Request & { userId?: number }).userId;
+    if (userId != null) {
+      return `learn-import:user:${userId}`;
+    }
+    return `learn-import:ip:${ipKeyGenerator(req.ip ?? "")}`;
+  },
+});

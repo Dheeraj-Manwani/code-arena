@@ -24,6 +24,7 @@ import { attachRealtime } from "./realtime/server";
 import { reconcilePendingSubmissions } from "./jobs/reconcile";
 import { reconcileLearnProgress } from "./jobs/reconcileLearn";
 import { submitPool } from "./jobs/pool";
+import { sweepOrphanedWorkspaces } from "./judge/local/workspace";
 import { logger } from "./lib/logger";
 
 const app = express();
@@ -87,6 +88,15 @@ server.listen(PORT, () => {
     logger.error(
       { err: err instanceof Error ? err.message : String(err) },
       "Learn progress reconciliation failed"
+    )
+  );
+  // Remove judge workspaces orphaned by a crash (SELF_HOSTED_JUDGE.md §4.2).
+  // Cheap and a no-op on a clean boot; skipping it leaks a directory per
+  // in-flight submission every time the process dies.
+  sweepOrphanedWorkspaces().catch((err) =>
+    logger.error(
+      { err: err instanceof Error ? err.message : String(err) },
+      "Judge workspace sweep failed"
     )
   );
 });

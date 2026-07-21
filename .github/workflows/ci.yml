@@ -35,3 +35,32 @@ jobs:
         run: node node_modules/typescript/bin/tsc --noEmit
       - name: Test
         run: npx vitest run
+
+  # The container sandbox is the security boundary for untrusted submissions
+  # (SELF_HOSTED_JUDGE.md Phase 4), so its corpus runs on every PR rather than
+  # on demand — a dropped flag is invisible until someone exploits it.
+  #
+  # Separate job on purpose: it builds four language images and takes minutes,
+  # while the job above promises to stay fast and Docker-free.
+  judge-sandbox:
+    name: judge sandbox (Docker)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api-http
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: api-http/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Build judge language images
+        run: bash docker/judge/build.sh
+      - name: Run adversarial sandbox corpus
+        run: npx vitest run --config vitest.integration.config.ts src/judge/local/sandbox.itest.ts

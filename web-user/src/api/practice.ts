@@ -3,9 +3,11 @@ import type {
   CatalogueResponse,
   PracticeDraft,
   PracticeProblem,
+  PracticeProgress,
   PracticeSubmission,
   PracticeSubmitResult,
   ProblemFilters,
+  ProblemTagCount,
 } from "@/schema/practice.schema";
 
 export const practiceApi = {
@@ -19,18 +21,26 @@ export const practiceApi = {
     });
 
     if (filters.search?.trim()) params.append("search", filters.search.trim());
-    if (filters.difficulty) params.append("difficulty", filters.difficulty);
-    if (filters.status) params.append("status", filters.status);
-    // Repeated `tags` params — the API also accepts a comma-separated value, but
-    // repeating avoids escaping questions for tags that contain a comma.
+    // Repeated params throughout — the API also accepts a comma-separated
+    // value, but repeating avoids escaping questions for tags that contain a
+    // comma.
+    for (const difficulty of filters.difficulty ?? []) {
+      params.append("difficulty", difficulty);
+    }
+    for (const status of filters.status ?? []) params.append("status", status);
     for (const tag of filters.tags ?? []) params.append("tags", tag);
 
     const res = await api.get(`/api/problems?${params.toString()}`);
     return res.data;
   },
 
-  getTags: async (): Promise<{ success: boolean; data: string[] }> => {
+  getTags: async (): Promise<{ success: boolean; data: ProblemTagCount[] }> => {
     const res = await api.get("/api/problems/tags");
+    return res.data;
+  },
+
+  getProgress: async (): Promise<{ success: boolean; data: PracticeProgress }> => {
+    const res = await api.get("/api/problems/progress");
     return res.data;
   },
 

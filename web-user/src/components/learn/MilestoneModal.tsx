@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { fireMilestoneConfetti } from "@/lib/confetti";
 import { ProgressRing } from "./ProgressRing";
 
 interface MilestoneModalProps {
@@ -54,6 +55,13 @@ export const MilestoneModal = ({
     const frame = requestAnimationFrame(() => setFilled(true));
     return () => cancelAnimationFrame(frame);
   }, [reduced]);
+
+  // Empty deps: this modal is mounted once per milestone by `CelebrationHost`,
+  // so mount *is* the event. Re-firing on any re-render would restart the burst
+  // every time the ring's state settles.
+  useEffect(() => {
+    fireMilestoneConfetti();
+  }, []);
 
   const percent = pathTotal > 0 ? Math.round((pathCompleted / pathTotal) * 100) : 0;
 

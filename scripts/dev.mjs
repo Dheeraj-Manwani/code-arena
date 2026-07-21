@@ -1,20 +1,23 @@
 #!/usr/bin/env node
 /**
- * Starts every Code Arena service, each in its own terminal window.
+ * Starts every Code Arena service in the current terminal, output multiplexed.
  *
- * Separate windows rather than one multiplexed stream (the `concurrently`
- * approach) because these three have very different output: ts-node-dev reprints
- * a compile banner on every save, and two Vite servers both draw their own
- * status block. Interleaved and prefixed, that is unreadable exactly when you
- * need it — which is while something is crashing.
+ * One window with prefixed, colour-coded lines. The cost is real and worth
+ * naming: ts-node-dev reprints a compile banner on every save and both Vite
+ * servers draw their own status block, so interleaved output is busier than
+ * three clean panes — which is why this used to open separate windows. The
+ * trade is deliberate: one window means one Ctrl+C, one scrollback to search,
+ * and no hunting for which console owns a stack trace. `--separate` restores
+ * the old behaviour when you want isolated panes for a gnarly debugging session.
  *
- * Deliberately dependency-free. The repo root has no node_modules and this
- * exists to launch things, so requiring an install before you can start anything
- * would be backwards.
+ * Deliberately dependency-free — no `concurrently`. The repo root has no
+ * node_modules and this exists to launch things, so requiring an install before
+ * you can start anything would be backwards.
  *
  * Usage:
- *   pnpm dev              all three
+ *   pnpm dev              all three, one window
  *   pnpm dev api web      a subset, by key
+ *   pnpm dev --separate   one terminal window per service (the old behaviour)
  *   pnpm dev --list       show what would start, run nothing
  */
 
@@ -45,20 +48,26 @@ const SERVICES = [
     key: "web",
     title: "web-user :5173",
     cwd: "web-user",
-    command: "pnpm dev -- --port 5173 --strictPort",
+    // No `--` before the flags. pnpm forwards trailing args to the script
+    // already, and the separator survives into Vite's own argv — where cac
+    // treats everything after `--` as positional rather than as options, so
+    // `--strictPort` was silently ignored and Vite walked to the next free
+    // port. That is the exact non-determinism the pinning below exists to stop.
+    command: "pnpm dev --port 5173 --strictPort",
     note: "learner app",
   },
   {
     key: "admin",
     title: "web-admin :5174",
     cwd: "web-admin",
-    command: "pnpm dev -- --port 5174 --strictPort",
+    command: "pnpm dev --port 5174 --strictPort",
     note: "creator app",
   },
 ];
 
 const args = process.argv.slice(2);
 const listOnly = args.includes("--list");
+const separateWindows = args.includes("--separate");
 const keys = args.filter((arg) => !arg.startsWith("-"));
 
 const selected = keys.length
@@ -175,17 +184,157 @@ function commandExists(command) {
   return spawnSync(command, { stdio: "ignore", shell: true }).status === 0;
 }
 
-/** Splits a command string on spaces except inside double quotes. */
-function splitArgs(input) {
-  return input.match(/(?:[^\s"]+|"[^"]*")+/g) ?? [];
+// ---------------------------------------------------------------------------
+// Inline mode (the default): everything in this window
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-service colours, so a line's owner is identifiable without reading the
+ * prefix. Skips red — red is for this launcher's own failure messages, and a
+ * service whose normal output looked like an error would defeat the point.
+ */
+const COLORS = ["\x1b[36m", "\x1b[32m", "\x1b[35m", "\x1b[33m", "\x1b[34m"];
+const DIM = "\x1b[2m";
+const RED = "\x1b[31m";
+const RESET = "\x1b[0m";
+
+// Respect NO_COLOR and non-TTY output, so piping to a file or CI log doesn't
+// fill it with escape codes.
+const useColor = process.stdout.isTTY && !process.env.NO_COLOR;
+const paint = (color, text) => (useColor ? `${color}${text}${RESET}` : text);
+
+/** Live children, so the signal handlers can stop every one of them. */
+const running = [];
+let shuttingDown = false;
+
+/**
+ * Writes a child's output line-by-line with its prefix.
+ *
+ * Buffered rather than per-chunk: a chunk boundary lands mid-line often enough
+ * that prefixing chunks directly produces visibly broken output under load.
+ * `\r` is stripped because Vite and ts-node-dev use carriage returns to redraw
+ * their status lines in place — passed through a prefixed stream, that
+ * overwrites the prefix and leaves fragments behind.
+ */
+function pipePrefixed(stream, prefix) {
+  let buffer = "";
+  stream.setEncoding("utf8");
+
+  stream.on("data", (chunk) => {
+    buffer += chunk;
+    const lines = buffer.split("\n");
+    // The trailing element is an incomplete line; hold it for the next chunk.
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      process.stdout.write(`${prefix} ${line.replace(/\r/g, "")}\n`);
+    }
+  });
+
+  stream.on("end", () => {
+    if (buffer) process.stdout.write(`${prefix} ${buffer.replace(/\r/g, "")}\n`);
+  });
 }
 
-const platform = process.platform;
-if (platform === "win32") launchWindows(selected);
-else if (platform === "darwin") launchMac(selected);
-else launchLinux(selected);
+/**
+ * Stops a child and everything it spawned.
+ *
+ * On Windows `child.kill()` reaches only the shell this launcher started, and
+ * `pnpm dev` sits under it as a grandchild — so the actual dev server survives,
+ * keeps its port, and the next run fails with EADDRINUSE. `taskkill /T` walks
+ * the tree, which is the only reliable way to end it there.
+ */
+function stopChild(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
 
-console.log(
-  "\nOpened in separate terminals. Close those windows to stop the services." +
-    "\nPostgres is not managed here — `docker compose up -d postgres` if it isn't running.",
-);
+  if (process.platform === "win32") {
+    spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+      stdio: "ignore",
+    }).on("error", () => child.kill());
+    return;
+  }
+
+  child.kill("SIGTERM");
+}
+
+function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  process.stdout.write(`\n${paint(DIM, "Stopping services...")}\n`);
+  for (const child of running) stopChild(child);
+}
+
+function runInline(services) {
+  const labelWidth = Math.max(...services.map((service) => service.key.length));
+  let remaining = services.length;
+  let worstCode = 0;
+
+  services.forEach((service, index) => {
+    const color = COLORS[index % COLORS.length];
+    const prefix = paint(color, `[${service.key.padEnd(labelWidth)}]`);
+
+    // One command string with `shell: true` — the commands carry their own
+    // flags (`pnpm dev -- --port 5173`), and an args array here would need the
+    // same quoting dance the separate-window path documents.
+    const child = spawn(service.command, {
+      cwd: join(root, service.cwd),
+      shell: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    running.push(child);
+    pipePrefixed(child.stdout, prefix);
+    // stderr shares the service's colour rather than going red: ts-node-dev and
+    // Vite both write ordinary progress to stderr, so colouring by stream would
+    // paint routine startup as failure.
+    pipePrefixed(child.stderr, prefix);
+
+    child.on("error", (err) => {
+      process.stdout.write(`${prefix} ${paint(RED, `failed to start: ${err.message}`)}\n`);
+    });
+
+    child.on("exit", (code, signal) => {
+      remaining--;
+
+      // During shutdown every service exits by design; announcing each one is
+      // noise on top of the Ctrl+C the user just pressed.
+      if (!shuttingDown) {
+        const how = signal ? `signal ${signal}` : `code ${code}`;
+        const message = `${service.title} exited (${how})`;
+        process.stdout.write(
+          `${prefix} ${code ? paint(RED, message) : paint(DIM, message)}\n`,
+        );
+        if (code) worstCode = code;
+      }
+
+      // Deliberately does NOT stop the others. A Vite server dying shouldn't
+      // take the API down with it — the remaining services stay useful, and
+      // the one that died is named above so it can be restarted.
+      if (remaining === 0) process.exit(worstCode);
+    });
+  });
+
+  // Ctrl+C reaches this process; the children need it forwarded explicitly
+  // because they were started detached from this terminal's process group.
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+
+  process.stdout.write(
+    `\n${paint(DIM, "Ctrl+C stops everything. Postgres is not managed here — `pnpm db:up` if it isn't running.")}\n\n`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+if (separateWindows) {
+  const platform = process.platform;
+  if (platform === "win32") launchWindows(selected);
+  else if (platform === "darwin") launchMac(selected);
+  else launchLinux(selected);
+
+  console.log(
+    "\nOpened in separate terminals. Close those windows to stop the services." +
+      "\nPostgres is not managed here — `docker compose up -d postgres` if it isn't running.",
+  );
+} else {
+  runInline(selected);
+}

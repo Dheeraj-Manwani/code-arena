@@ -1,7 +1,11 @@
 import judge0Client from "./client";
-import { POLL_MAX_ATTEMPTS, POLL_INTERVAL_MS, JUDGE0_TERMINAL_STATUSES } from "../jobs/constants";
-import { PollTimeoutError, JudgeApiError } from "./errors";
-import type { Judge0StatusResponse } from "../schema/judge0.schema";
+import {
+  POLL_MAX_ATTEMPTS,
+  POLL_INTERVAL_MS,
+  JUDGE0_TERMINAL_STATUSES,
+} from "../../jobs/constants";
+import { PollTimeoutError, JudgeApiError } from "../errors";
+import type { Judge0StatusResponse } from "../../schema/judge0.schema";
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 

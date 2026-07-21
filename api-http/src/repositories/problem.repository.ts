@@ -1,6 +1,10 @@
 import { Prisma } from "@prisma/client";
 import prisma from "../lib/db";
-import { AddTestCaseType, type GetProblemsQuery } from "../schema/problem.schema";
+import {
+  AddTestCaseType,
+  type GetProblemsQuery,
+  type ProblemStatusFilter,
+} from "../schema/problem.schema";
 import { slugify } from "../util/slug";
 
 /**
@@ -141,11 +145,11 @@ const catalogueOrderBy = (
   }
 };
 
-/** The caller's solved/attempted/todo filter (§4.5). */
-const statusWhere = (
-  status: GetProblemsQuery["status"],
+/** The caller's standing on a problem, as one where-clause (§4.5). */
+const oneStatusWhere = (
+  status: ProblemStatusFilter,
   userId: number,
-): Prisma.DsaProblemWhereInput | undefined => {
+): Prisma.DsaProblemWhereInput => {
   switch (status) {
     case "solved":
       return { userStatuses: { some: { userId, status: "solved" } } };
@@ -156,9 +160,23 @@ const statusWhere = (
     case "todo":
       // Never submitted against at all.
       return { userStatuses: { none: { userId } } };
-    default:
-      return undefined;
   }
+};
+
+/**
+ * Several statuses OR together, because they partition the catalogue: a problem
+ * is solved, attempted, or untouched — never two at once. ANDing them (the
+ * default if each clause were merged onto `where`) would always match nothing,
+ * which is why this returns an OR array rather than a merged object.
+ */
+const statusWhere = (
+  statuses: GetProblemsQuery["status"],
+  userId: number,
+): Prisma.DsaProblemWhereInput | undefined => {
+  if (!statuses || statuses.length === 0) return undefined;
+
+  const clauses = statuses.map((status) => oneStatusWhere(status, userId));
+  return clauses.length === 1 ? clauses[0] : { OR: clauses };
 };
 
 export const getPracticeProblems = async (
@@ -170,8 +188,8 @@ export const getPracticeProblems = async (
 
   const where: Prisma.DsaProblemWhereInput = { ...practiceableWhere(now) };
 
-  if (difficulty) {
-    where.difficulty = difficulty;
+  if (difficulty && difficulty.length > 0) {
+    where.difficulty = { in: difficulty };
   }
 
   if (tags && tags.length > 0) {
@@ -247,19 +265,65 @@ export const getPracticeProblemForJudge = async (slug: string, now: Date) => {
   });
 };
 
-/** Distinct tags across the practiceable catalogue, for the filter control. */
-export const getPracticeTags = async (now: Date): Promise<string[]> => {
+export interface PracticeTagCount {
+  tag: string;
+  count: number;
+}
+
+/**
+ * Distinct tags across the practiceable catalogue, with how many problems carry
+ * each, for the filter sidebar.
+ *
+ * Counted in memory from one projection rather than with a `groupBy`: `tags` is
+ * a scalar array column, so grouping on it would group on the whole array
+ * ("arrays+hashing" as one key) instead of on each member. Unnesting would need
+ * raw SQL that then has to duplicate `practiceableWhere` — a second copy of the
+ * contest-integrity rule is exactly the kind of drift §4.4 warns about.
+ *
+ * Sorted by count first so the sidebar leads with the tags worth filtering on,
+ * then alphabetically to keep the order stable between equal counts.
+ */
+export const getPracticeTags = async (now: Date): Promise<PracticeTagCount[]> => {
   const rows = await prisma.dsaProblem.findMany({
     where: practiceableWhere(now),
     select: { tags: true },
   });
 
-  const unique = new Set<string>();
+  const counts = new Map<string, number>();
   for (const row of rows) {
-    for (const tag of row.tags) unique.add(tag);
+    // A problem tagged the same thing twice must still only count once.
+    for (const tag of new Set(row.tags)) {
+      counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
   }
 
-  return [...unique].sort((a, b) => a.localeCompare(b));
+  return [...counts.entries()]
+    .map(([tag, count]) => ({ tag, count }))
+    .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+};
+
+/**
+ * The caller's standing across the whole practiceable catalogue.
+ *
+ * Deliberately NOT derived from the filtered list's `meta`: the progress bar
+ * answers "how far through the catalogue am I", which must not move when
+ * someone ticks a difficulty filter. Filtering to `status=solved` would
+ * otherwise render a permanent 100%.
+ */
+export const getPracticeProgress = async (
+  userId: number,
+  now: Date,
+): Promise<{ solved: number; total: number }> => {
+  const where = practiceableWhere(now);
+
+  const [total, solved] = await Promise.all([
+    prisma.dsaProblem.count({ where }),
+    prisma.dsaProblem.count({
+      where: { ...where, userStatuses: { some: { userId, status: "solved" } } },
+    }),
+  ]);
+
+  return { solved, total };
 };
 
 export const getMcqQuestion = async (questionId: number, contestId: number) => {

@@ -52,6 +52,26 @@ export const CatalogueResponseSchema = z.object({
 });
 export type CatalogueResponse = z.infer<typeof CatalogueResponseSchema>;
 
+/** A tag and how many practiceable problems carry it, for the filter sidebar. */
+export const ProblemTagCountSchema = z.object({
+  tag: z.string(),
+  count: z.number().int(),
+});
+export type ProblemTagCount = z.infer<typeof ProblemTagCountSchema>;
+
+/**
+ * The caller's standing across the whole catalogue.
+ *
+ * Separate from the list's `meta` on purpose: this drives the progress bar,
+ * which answers "how far through the catalogue am I" and must not move when a
+ * filter is ticked.
+ */
+export const PracticeProgressSchema = z.object({
+  solved: z.number().int(),
+  total: z.number().int(),
+});
+export type PracticeProgress = z.infer<typeof PracticeProgressSchema>;
+
 export const PracticeProblemSchema = CatalogueProblemSchema.extend({
   description: z.string(),
   // Inherits acceptanceRate / solvedBy / totalSubmissions / status from
@@ -107,8 +127,10 @@ export interface ProblemFilters {
   page: number;
   limit: number;
   search?: string;
-  difficulty?: z.infer<typeof DifficultyEnum>;
+  /** Multi-select — the sidebar filters difficulty with checkboxes. */
+  difficulty?: z.infer<typeof DifficultyEnum>[];
   tags?: string[];
-  status?: ProblemStatusFilter;
+  /** Multi-select. The three states partition the catalogue, so these OR. */
+  status?: ProblemStatusFilter[];
   sortBy: ProblemSort;
 }

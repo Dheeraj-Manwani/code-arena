@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { learnApi, learnMutations, learnMomentum } from "@/api/learn";
+import { learnApi, learnMutations, learnMomentum, learnWorkbook } from "@/api/learn";
 
 export const learnKeys = {
   gallery: ["learnGallery"] as const,
@@ -61,6 +61,58 @@ export const useUnlockModuleMutation = (pathSlug: string | undefined) =>
 
 export const useResetPathMutation = (pathSlug: string | undefined) =>
   useLearnMutation(learnMutations.resetPath, pathSlug);
+
+/**
+ * Downloading the progress sheet.
+ *
+ * A mutation rather than a query even though it only reads: it must run when
+ * the user clicks, never on mount or a refetch, and it has no cacheable result —
+ * exactly the shape `useMutation` is for.
+ */
+export const useExportPathMutation = (pathSlug: string | undefined) =>
+  useMutation({
+    mutationFn: async () => {
+      if (!pathSlug) throw new Error("Path slug is required");
+      const { blob, filename } = await learnWorkbook.exportPath(pathSlug);
+
+      // Object URL + synthetic click. The endpoint is authenticated, so a plain
+      // `<a href>` would navigate without the Authorization header and get a
+      // 401; the file has to come back through the configured axios client.
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      // Revoking synchronously can cancel the download in some browsers before
+      // it starts reading; a tick's grace avoids that without leaking.
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    },
+  });
+
+/**
+ * Uploading an edited sheet.
+ *
+ * Invalidates the same three keys as every other progress write — an import can
+ * change hundreds of questions at once, so anything less than a full refetch
+ * would leave counts stale across the page.
+ */
+export const useImportPathMutation = (pathSlug: string | undefined) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (file: File) => {
+      if (!pathSlug) throw new Error("Path slug is required");
+      return learnWorkbook.importPath(pathSlug, file);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: learnKeys.path(pathSlug ?? "") });
+      queryClient.invalidateQueries({ queryKey: learnKeys.gallery });
+      queryClient.invalidateQueries({ queryKey: ["learnLesson"] });
+    },
+  });
+};
 
 /**
  * Answering an MCQ.

@@ -60,7 +60,9 @@ describe("GetProblemsSchema — Phase 5 stats controls (§4.5)", () => {
 
   it("accepts each status filter", () => {
     for (const status of ["solved", "attempted", "todo"] as const) {
-      expect(GetProblemsSchema.parse({ status }).status).toBe(status);
+      // Repeatable since the catalogue sidebar filters status with checkboxes,
+      // so a single value now parses to a one-element array.
+      expect(GetProblemsSchema.parse({ status }).status).toEqual([status]);
     }
   });
 
@@ -70,5 +72,58 @@ describe("GetProblemsSchema — Phase 5 stats controls (§4.5)", () => {
 
   it("rejects an unknown status rather than silently ignoring it", () => {
     expect(GetProblemsSchema.safeParse({ status: "starred" }).success).toBe(false);
+  });
+});
+
+/**
+ * Multi-select filters (the catalogue sidebar).
+ *
+ * Difficulty and status became repeatable so the sidebar's checkboxes can mean
+ * what checkboxes mean. The rules they inherit — reject unknown members, accept
+ * both the repeated and comma forms — are the ones the single-value params
+ * already followed, and these pin that they survived the change.
+ */
+describe("GetProblemsSchema — multi-select filters", () => {
+  it("parses repeated difficulty params into an array", () => {
+    expect(GetProblemsSchema.parse({ difficulty: ["easy", "hard"] }).difficulty).toEqual([
+      "easy",
+      "hard",
+    ]);
+  });
+
+  it("splits a comma-separated difficulty param", () => {
+    expect(GetProblemsSchema.parse({ difficulty: "easy, hard" }).difficulty).toEqual([
+      "easy",
+      "hard",
+    ]);
+  });
+
+  it("keeps a single difficulty working, as a one-element array", () => {
+    expect(GetProblemsSchema.parse({ difficulty: "medium" }).difficulty).toEqual(["medium"]);
+  });
+
+  it("parses repeated status params into an array", () => {
+    expect(GetProblemsSchema.parse({ status: ["solved", "todo"] }).status).toEqual([
+      "solved",
+      "todo",
+    ]);
+  });
+
+  it("dedupes a repeated value", () => {
+    expect(GetProblemsSchema.parse({ difficulty: ["easy", "easy"] }).difficulty).toEqual([
+      "easy",
+    ]);
+  });
+
+  it("rejects the whole param when any member is unknown", () => {
+    // Not "drops the bad one": a half-applied filter is a wrong answer that
+    // looks like a right one.
+    expect(
+      GetProblemsSchema.safeParse({ difficulty: ["easy", "impossible"] }).success,
+    ).toBe(false);
+  });
+
+  it("treats an all-empty param as no filter", () => {
+    expect(GetProblemsSchema.parse({ difficulty: " , " }).difficulty).toBeUndefined();
   });
 });

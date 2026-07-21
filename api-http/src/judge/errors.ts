@@ -42,6 +42,21 @@ export class JudgeApiError extends Error {
   }
 }
 
+/**
+ * The container runtime is unavailable — daemon down, `docker` not on PATH, or
+ * `docker run` itself failing (exit 125).
+ *
+ * Classified transient below. This is infrastructure, not user code: the
+ * submission never ran, so recording a verdict for it would be a lie. A daemon
+ * restart mid-contest should delay a verdict, not fail it.
+ */
+export class DockerUnavailableError extends Error {
+  constructor(message: string) {
+    super(`Docker unavailable: ${message}`);
+    this.name = "DockerUnavailableError";
+  }
+}
+
 export class PollTimeoutError extends Error {
   public readonly token: string;
 
@@ -62,6 +77,9 @@ export function isTransientError(err: unknown): boolean {
     return err.isTransient;
   }
   if (err instanceof PollTimeoutError) {
+    return true;
+  }
+  if (err instanceof DockerUnavailableError) {
     return true;
   }
   // Axios/network errors without an HTTP response (ECONNRESET, ETIMEDOUT, etc.)

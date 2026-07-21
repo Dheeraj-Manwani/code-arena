@@ -55,6 +55,13 @@ const errorMessages = {
   // better-evidenced than what they were trying to do.
   [ApiErrorCode.LEARN_CANNOT_UNMARK_VERIFIED]:
     "You solved this one on Code Arena, so it stays marked complete.",
+  [ApiErrorCode.LEARN_IMPORT_NO_FILE]: "Attach the .xlsx sheet you exported.",
+  [ApiErrorCode.LEARN_IMPORT_TOO_LARGE]:
+    "That file is too large — a progress sheet is only a few kilobytes.",
+  // The import dialog already explains this one in context, but the toast still
+  // has to say something useful if the request fails from elsewhere.
+  [ApiErrorCode.LEARN_IMPORT_UNREADABLE]:
+    "That file couldn't be read as a spreadsheet. Export a fresh copy and edit that.",
 
   // Error not required
   [ApiErrorCode.REFRESH_TOKEN_NOT_FOUND]: undefined,

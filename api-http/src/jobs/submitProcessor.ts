@@ -1,12 +1,11 @@
 import { childLogger } from "../lib/logger";
-import { submitToJudge0 } from "../judge/submit";
-import { pollForVerdict } from "../judge/poll";
+import { getExecutor } from "../judge/executor";
 import { deriveVerdict } from "../judge/parse";
 import { applyJobResult } from "../service/submissionResult.service";
 import { targetSubmissionId, type JudgeJob } from "../schema/job.schema";
 
 /**
- * Submit pipeline: Judge0 submit → poll → derive verdict → persist + broadcast.
+ * Submit pipeline: execute → derive verdict → persist + broadcast.
  *
  * Economy Service Phase 3: this takes a plain `JudgeJob` (built in-process,
  * already typed) and is driven by the in-process pool (jobs/pool.ts). It throws
@@ -25,13 +24,20 @@ export async function processSubmitJob(job: JudgeJob): Promise<void> {
 
   log.info("Processing job started");
 
-  const token = await submitToJudge0(job);
-  log.info({ token }, "Judge0 token received");
-
-  const judgeResponse = await pollForVerdict(token);
+  // Self-Hosted Judge Phase 1: the submit-then-poll pair is now one call behind
+  // the `Executor` seam, so which backend runs the code is a config concern.
+  const executor = getExecutor();
+  const judgeResponse = await executor.execute({
+    language: job.language,
+    sourceCode: job.sourceCode,
+  });
   log.info(
-    { statusId: judgeResponse.status.id, description: judgeResponse.status.description },
-    "Judge0 raw status"
+    {
+      backend: executor.name,
+      statusId: judgeResponse.status.id,
+      description: judgeResponse.status.description,
+    },
+    "Judge raw status"
   );
 
   const { status, testCasesPassed, executionTime } = deriveVerdict(judgeResponse, job.totalTestCases);

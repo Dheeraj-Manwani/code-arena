@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { authenticateToken } from "../middleware/auth";
-import { learnAnswerRateLimiter } from "../middleware/rate-limit";
+import { learnAnswerRateLimiter, learnImportRateLimiter } from "../middleware/rate-limit";
+import { uploadSpreadsheet, handleUploadError } from "../middleware/upload";
 import * as learnController from "../controller/learn.controller";
 
 /**
@@ -34,6 +35,18 @@ router.post(
 );
 router.post("/modules/:moduleId/unlock", learnController.unlockModule);
 router.post("/paths/:slug/reset", learnController.resetPath);
+
+// Spreadsheet round trip (§3.9). Both are user-scoped like everything above:
+// the export contains only `req.userId`'s progress, and the import can only
+// write it.
+router.get("/paths/:slug/export", learnController.exportPathProgress);
+router.post(
+  "/paths/:slug/import",
+  learnImportRateLimiter,
+  uploadSpreadsheet,
+  handleUploadError,
+  learnController.importPathProgress,
+);
 
 // Momentum loop (Phase 6).
 router.get("/paths/:slug/celebrations", learnController.getCelebrations);
